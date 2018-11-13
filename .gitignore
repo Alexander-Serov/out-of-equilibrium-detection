@@ -103,3 +103,10 @@ venv.bak/
 # mypy
 .mypy_cache/
 trajectory.dat
+1-D.png
+1-dX.png
+2-D.png
+2-dX.png
+simulated_trajectories.png
+trajectory_with_1.dat
+trajectory_with_2.dat

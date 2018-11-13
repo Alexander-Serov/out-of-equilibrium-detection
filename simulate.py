@@ -22,16 +22,15 @@ from stopwatch import stopwatch
 
 # % Constants
 D1 = 0.4  # um^2/s
-D2 = D1  # um^2/s
+D2 = 5 * D1  # um^2/s
 k1 = k2 = 1e-6   # spring constant, N/m = kg/s^2; 1e-6
-k12 = k1   # spring constant, N/m = kg/s^2; 2e-3, 3e-3; 1.5e-3
+k12 = 10 * k1   # spring constant, N/m = kg/s^2; 2e-3, 3e-3; 1.5e-3
 kB = 1.38e-11  # kg*um^2/s^2/K
 gamma = 1e-8  # viscous drag, in kg/s; 4e-8
-L12 = 0.5  # um
-L1 = L2 = L12 / 2
+L12 = 2  # um
 dt = 1e-6  # seconds
 # substeps = 100
-N = 1 + int(1e5)  # time step
+N = 1 + int(1e6)  # time step
 x10 = -L12 / 2
 x20 = L12 / 2
 file = './trajectory.dat'
@@ -88,8 +87,10 @@ plt.ylabel('$x, \mu$m')
 plt.show()
 plt.savefig('simulated_trajectories.png')
 
-# %% Save
-output = np.stack([t, x1, dx1, x2, dx2], axis=1)
+# % Save
+dX = X[:, 1:] - X[:, 0:-1]
+dX = np.concatenate([dX, [[np.nan], [np.nan]]], axis=1)
+output = np.stack([t, X[0, :], dX[0, :], X[1, :], dX[1, :]], axis=1)
 output = pd.DataFrame(data=output, columns=['t', 'x', 'dx', 'x2', 'dx2'])
 # output = pd.DataFrame(data=output, columns=['t', 'x2', 'dx2', 'x', 'dx'])
 output.to_csv(file, sep=';', index=False)

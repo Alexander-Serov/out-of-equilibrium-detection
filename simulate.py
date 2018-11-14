@@ -21,16 +21,16 @@ from stopwatch import stopwatch
 # matplotlib.use('TkAgg')
 
 # % Constants
-D1 = 0.4  # um^2/s
+D1 = 0.4  # um^2/s; 0.4
 D2 = 5 * D1  # um^2/s
-k1 = k2 = 1e-6   # spring constant, N/m = kg/s^2; 1e-6
-k12 = 10 * k1   # spring constant, N/m = kg/s^2; 2e-3, 3e-3; 1.5e-3
+k1 = k2 = 0 * 1e-6 / 1e3   # spring constant, N/m = kg/s^2; 1e-6
+k12 = 0 * k1   # spring constant, N/m = kg/s^2; 2e-3, 3e-3; 1.5e-3
 kB = 1.38e-11  # kg*um^2/s^2/K
 gamma = 1e-8  # viscous drag, in kg/s; 4e-8
 L12 = 2  # um
-dt = 1e-6  # seconds
+dt = 1e-4  # seconds
 # substeps = 100
-N = 1 + int(1e6)  # time step
+N = 1 + int(1e5)  # time step
 x10 = -L12 / 2
 x20 = L12 / 2
 file = './trajectory.dat'
@@ -54,10 +54,10 @@ b = np.sqrt(2 * np.array([D1, D2]))
 x0 = np.array([x10, x20])
 
 # noise
-np.random.seed(0)
+np.random.seed()
 dW = np.random.randn(2, N)
-dW[0, :] = dW[0, :] * b[0] * np.sqrt(dt)
-dW[1, :] = dW[1, :] * b[1] * np.sqrt(dt)
+dW[0, :] = dW[0, :] * np.sqrt(dt)
+dW[1, :] = dW[1, :] * np.sqrt(dt)
 
 
 def mat_exp(M):
@@ -95,7 +95,9 @@ output = pd.DataFrame(data=output, columns=['t', 'x', 'dx', 'x2', 'dx2'])
 # output = pd.DataFrame(data=output, columns=['t', 'x2', 'dx2', 'x', 'dx'])
 output.to_csv(file, sep=';', index=False)
 #
-# # %% Tests of scales
+# %% Tests of scales
+np.var(dX[:, :-1], axis=1, ddof=1) / 2 / dt
+[D1, D2]
 # np.var(dx1[:N - 1]) / 2 / dt
 # np.sqrt(2 * dt) / L12
 # np.sqrt(2 * dt) / 0.05

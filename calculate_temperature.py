@@ -18,7 +18,6 @@ import pandas as pd
 from Bin import Bin, make_adaptive_mesh
 
 # % Constants
-min_n = int(5e2)
 file = './trajectory.dat'
 # file = './trajectory_with_1.dat'
 # file = './trajectory_with_2.dat'
@@ -26,8 +25,10 @@ file = './trajectory.dat'
 # % Load
 data = pd.read_csv(file, sep=';')
 data.drop(labels=['x2', 'dx2'], axis=1, inplace=True)
+N = len(data)
 
-min_bin_width = np.std(data.dx, ddof=1) * 2
+min_n = 100  # int(N / 10)
+min_bin_width = np.std(data.abs().dx, ddof=1) * 4
 dt = data.t.loc[1] - data.t.loc[0]
 Bin.dt = dt
 
@@ -55,11 +56,12 @@ for i in range(bins_len):
 
 # bins[5].data
 
-print("Overall std(dX) / bin_width = {:.2g}".format(np.std(data.dx, ddof=1) / min_bin_width))
-# print("std(dX) / bin_width for each bin:")
-# print(np.sqrt(vars) / min_bin_width)
+print("Overall std(dX) / bin_width = {:.2g}".format(np.std(data.abs().dx, ddof=1) / min_bin_width))
+print("std(dX) / min_bin_width for each bin:")
+print(np.sqrt(vars) / min_bin_width)
 print("Min bin width = {:.2g}".format(min_bin_width))
-print("Mean apparent D = {:.2g}".format(np.mean(D_apparents)))
+print("Median apparent D = {:.2g}".format(np.median(D_apparents)))
+print(D_apparents)
 
 # Plot
 plt.figure(2, clear=True)

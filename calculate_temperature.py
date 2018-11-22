@@ -16,18 +16,21 @@ import numpy as np
 import pandas as pd
 
 from Bin import Bin, make_adaptive_mesh
+from simulate import simulate_2_particles
 
 # % Constants
 file = './trajectory.dat'
 # file = './trajectory_with_1.dat'
 # file = './trajectory_with_2.dat'
-
 # % Load
+
+simulate_2_particles()
+
 data = pd.read_csv(file, sep=';')
 data.drop(labels=['x2', 'dx2'], axis=1, inplace=True)
 N = len(data)
 
-min_n = 100  # int(N / 10)
+min_n = int(5e2)
 min_bin_width = np.std(data.abs().dx, ddof=1) * 4
 dt = data.t.loc[1] - data.t.loc[0]
 Bin.dt = dt

@@ -13,7 +13,7 @@ from scipy.optimize import minimize
 # from scipy.stats import chi2
 
 
-def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, k1=1e-8, k2=1e-8, k12=1e-8, gamma=1e-8, M=999, dt=0.3, alpha=0):
+def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0):
     """
     Calculate likelihood of one power spectrum observation z for the frequency k.
     Does not work for k = 0.
@@ -21,6 +21,7 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, k1=1e-8, k2=1e-8
     Input:
     gamma --- viscosity, kg/s,
     z --- the value of the power spectrum component,
+    n1, n2 , n12 --- variables starting with n are spring constants normalizedby gamma, i.e. n1 = k1 /gamma
 
     Definitions:
     R --- 4D vector of locations vs. time, {x1, y1, x2, y2} x N,
@@ -56,12 +57,12 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, k1=1e-8, k2=1e-8
         return None
 
     # Analytical results from Mathematica
-    g = np.sqrt((k1 - k2)**2 + 4 * k12**2)
+    g = np.sqrt((n1 - n2)**2 + 4 * n12**2)
     # print('11')
-    lambdas = np.array([-(k1 / gamma),
-                        -(k2 / gamma),
-                        (-g - k1 - 2 * k12 - k2) / (2 * gamma),
-                        (g - k1 - 2 * k12 - k2) / (2 * gamma)])
+    lambdas = np.array([-n1,
+                        -n2,
+                        (-g - n1 - 2 * n12 - n2) / 2,
+                        (g - n1 - 2 * n12 - n2) / 2])
 
     def J(i, j, k):
         """Return the Fourier image of the average correlation between the stochastic integrals"""
@@ -83,28 +84,28 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, k1=1e-8, k2=1e-8
         The result is divided by (M*dt) to directly give the power spectrum
         """
         mat = np.array([
-            [(D1 / 2 + (D1 * k1) / g + (D1 * k1 ** 2) / (2 * g ** 2) - (D1 * k2) / g - (D1 * k1 * k2) / g ** 2 + (D1 * k2 ** 2) / (2 * g ** 2)) * J(3, 3, k) +
-             (D1 - (D1 * k1 ** 2) / g ** 2 + (2 * D1 * k1 * k2) / g ** 2 - (D1 * k2 ** 2) / g ** 2) * J(3, 4, k) +
-             (D1 / 2 - (D1 * k1) / g + (D1 * k1 ** 2) / (2 * g ** 2) + (D1 * k2) /
-                g - (D1 * k1 * k2) / g ** 2 + (D1 * k2 ** 2) / (2 * g ** 2)) * J(4, 4, k),
+            [(D1 / 2 + (D1 * n1) / g + (D1 * n1 ** 2) / (2 * g ** 2) - (D1 * n2) / g - (D1 * n1 * n2) / g ** 2 + (D1 * n2 ** 2) / (2 * g ** 2)) * J(3, 3, k) +
+             (D1 - (D1 * n1 ** 2) / g ** 2 + (2 * D1 * n1 * n2) / g ** 2 - (D1 * n2 ** 2) / g ** 2) * J(3, 4, k) +
+             (D1 / 2 - (D1 * n1) / g + (D1 * n1 ** 2) / (2 * g ** 2) + (D1 * n2) /
+                g - (D1 * n1 * n2) / g ** 2 + (D1 * n2 ** 2) / (2 * g ** 2)) * J(4, 4, k),
              0,
-             ((D1 * g ** 2) / (8 * k12 ** 2) - (D1 * k1 ** 2) / (4 * k12 ** 2) + (D1 * k1 ** 4) / (8 * g ** 2 * k12 ** 2) + (D1 * k1 * k2) / (2 * k12 ** 2) -
-              (D1 * k1 ** 3 * k2) / (2 * g ** 2 * k12 ** 2) - (D1 * k2 ** 2) / (4 * k12 ** 2) + (3 * D1 * k1 ** 2 * k2 ** 2) / (4 * g ** 2 * k12 ** 2) -
-              (D1 * k1 * k2 ** 3) / (2 * g ** 2 * k12 ** 2) + (D1 * k2 ** 4) / (8 * g ** 2 * k12 ** 2)) * J(3, 3, k) +
-             (-(D1 * g ** 2) / (4 * k12 ** 2) + (D1 * k1 ** 2) / (2 * k12 ** 2) - (D1 * k1 ** 4) / (4 * g ** 2 * k12 ** 2) - (D1 * k1 * k2) / k12 ** 2 +
-              (D1 * k1 ** 3 * k2) / (g ** 2 * k12 ** 2) + (D1 * k2 ** 2) / (2 * k12 ** 2) - (3 * D1 * k1 ** 2 * k2 ** 2) / (2 * g ** 2 * k12 ** 2) +
-              (D1 * k1 * k2 ** 3) / (g ** 2 * k12 ** 2) - (D1 * k2 ** 4) / (4 * g ** 2 * k12 ** 2)) * J(3, 4, k) +
-             ((D1 * g ** 2) / (8 * k12 ** 2) - (D1 * k1 ** 2) / (4 * k12 ** 2) + (D1 * k1 ** 4) / (8 * g ** 2 * k12 ** 2) + (D1 * k1 * k2) / (2 * k12 ** 2) -
-              (D1 * k1 ** 3 * k2) / (2 * g ** 2 * k12 ** 2) - (D1 * k2 ** 2) / (4 * k12 ** 2) + (3 * D1 * k1 ** 2 * k2 ** 2) / (4 * g ** 2 * k12 ** 2) -
-                  (D1 * k1 * k2 ** 3) / (2 * g ** 2 * k12 ** 2) + (D1 * k2 ** 4) / (8 * g ** 2 * k12 ** 2)) * J(4, 4, k),
+             ((D1 * g ** 2) / (8 * n12 ** 2) - (D1 * n1 ** 2) / (4 * n12 ** 2) + (D1 * n1 ** 4) / (8 * g ** 2 * n12 ** 2) + (D1 * n1 * n2) / (2 * n12 ** 2) -
+              (D1 * n1 ** 3 * n2) / (2 * g ** 2 * n12 ** 2) - (D1 * n2 ** 2) / (4 * n12 ** 2) + (3 * D1 * n1 ** 2 * n2 ** 2) / (4 * g ** 2 * n12 ** 2) -
+              (D1 * n1 * n2 ** 3) / (2 * g ** 2 * n12 ** 2) + (D1 * n2 ** 4) / (8 * g ** 2 * n12 ** 2)) * J(3, 3, k) +
+             (-(D1 * g ** 2) / (4 * n12 ** 2) + (D1 * n1 ** 2) / (2 * n12 ** 2) - (D1 * n1 ** 4) / (4 * g ** 2 * n12 ** 2) - (D1 * n1 * n2) / n12 ** 2 +
+              (D1 * n1 ** 3 * n2) / (g ** 2 * n12 ** 2) + (D1 * n2 ** 2) / (2 * n12 ** 2) - (3 * D1 * n1 ** 2 * n2 ** 2) / (2 * g ** 2 * n12 ** 2) +
+              (D1 * n1 * n2 ** 3) / (g ** 2 * n12 ** 2) - (D1 * n2 ** 4) / (4 * g ** 2 * n12 ** 2)) * J(3, 4, k) +
+             ((D1 * g ** 2) / (8 * n12 ** 2) - (D1 * n1 ** 2) / (4 * n12 ** 2) + (D1 * n1 ** 4) / (8 * g ** 2 * n12 ** 2) + (D1 * n1 * n2) / (2 * n12 ** 2) -
+              (D1 * n1 ** 3 * n2) / (2 * g ** 2 * n12 ** 2) - (D1 * n2 ** 2) / (4 * n12 ** 2) + (3 * D1 * n1 ** 2 * n2 ** 2) / (4 * g ** 2 * n12 ** 2) -
+                  (D1 * n1 * n2 ** 3) / (2 * g ** 2 * n12 ** 2) + (D1 * n2 ** 4) / (8 * g ** 2 * n12 ** 2)) * J(4, 4, k),
              0],
             [0, 2 * D1 * J(1, 1, k), 0, 0],
-            [(2 * D2 * k12 ** 2 * J(3, 3, k)) / g ** 2 - (4 * D2 * k12 ** 2 * J(3, 4, k)) / g ** 2 + (2 * D2 * k12 ** 2 * J(4, 4, k)) / g ** 2,
+            [(2 * D2 * n12 ** 2 * J(3, 3, k)) / g ** 2 - (4 * D2 * n12 ** 2 * J(3, 4, k)) / g ** 2 + (2 * D2 * n12 ** 2 * J(4, 4, k)) / g ** 2,
              0,
-             (D2 / 2 - (D2 * k1) / g + (D2 * k1 ** 2) / (2 * g ** 2) + (D2 * k2) / g - (D2 * k1 * k2) / g ** 2 + (D2 * k2 ** 2) / (2 * g ** 2)) * J(3, 3, k) +
-             (D2 - (D2 * k1 ** 2) / g ** 2 + (2 * D2 * k1 * k2) / g ** 2 - (D2 * k2 ** 2) / g ** 2) * J(3, 4, k) +
-             (D2 / 2 + (D2 * k1) / g + (D2 * k1 ** 2) / (2 * g ** 2) - (D2 * k2) /
-              g - (D2 * k1 * k2) / g ** 2 + (D2 * k2 ** 2) / (2 * g ** 2)) * J(4, 4, k),
+             (D2 / 2 - (D2 * n1) / g + (D2 * n1 ** 2) / (2 * g ** 2) + (D2 * n2) / g - (D2 * n1 * n2) / g ** 2 + (D2 * n2 ** 2) / (2 * g ** 2)) * J(3, 3, k) +
+             (D2 - (D2 * n1 ** 2) / g ** 2 + (2 * D2 * n1 * n2) / g ** 2 - (D2 * n2 ** 2) / g ** 2) * J(3, 4, k) +
+             (D2 / 2 + (D2 * n1) / g + (D2 * n1 ** 2) / (2 * g ** 2) - (D2 * n2) /
+              g - (D2 * n1 * n2) / g ** 2 + (D2 * n2 ** 2) / (2 * g ** 2)) * J(4, 4, k),
              0],
             [0, 0, 0, 2 * D2 * J(2, 2, k)]
         ])
@@ -114,7 +115,7 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, k1=1e-8, k2=1e-8
     def pdf_chi_squared_sum(z, sigma2s):
         """Calculate the pdf for a sum of chi-squared of order 2 through residues of the characteristic function"""
 
-        # print('s2: ', sigma2s)
+        print('s2: ', sigma2s)
         sigma2s_nonzero = np.array([sigma2 for sigma2 in sigma2s if abs(sigma2) > atol])
 
         n = len(sigma2s_nonzero)
@@ -145,13 +146,13 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, k1=1e-8, k2=1e-8
 
 def get_log_likelihood_func_2_particles_x_link(ks, zs, M, dt, alpha):
     """
-    Returns a log_10 of the likelihood function for all input data points as a function of parameters (D1, D2, k1, k2, k12, gamma).
+    Returns a log_10 of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
     The likelihood is not normalized over these parameters.
     """
 
-    def lg_lklh(D1, D2, k1, k2, k12, gamma):
+    def lg_lklh(D1, D2, n1, n2, n12):
         lg_lklh_vals = np.log10([likelihood_2_particles_x_link_one_point(z, k=k, D1=D1,
-                                                                         D2=D2, k1=k1, k2=k2, k12=k12, gamma=gamma, M=M, dt=dt, alpha=alpha)
+                                                                         D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=alpha)
                                  for z, k in zip(zs, ks)])
         # print('e', np.isfinite(lklh_vals))
         lg_lklh_vals = lg_lklh_vals[np.isfinite(lg_lklh_vals)]
@@ -170,16 +171,17 @@ def get_log_likelihood_func_2_particles_x_link(ks, zs, M, dt, alpha):
 
 def get_MLE(ks, zs, M, dt, alpha):
     lg_lklh_func = get_log_likelihood_func_2_particles_x_link(ks, zs, M, dt, alpha)
-    start_point = (1, 1, 1e-8, 1e-8, 1e-8, 1e-8)
+    start_point = (1, 1, 1, 1, 1)
+    bnds = ((0, None), (0, None), (0, None), (0, None), (0, None))
 
     def minimize_me(args):
         return -lg_lklh_func(*args)
 
     logging.info('Started MLE searh')
-    max = minimize(minimize_me, start_point, options={'disp': True})
+    max = minimize(minimize_me, start_point, bounds=bnds, options={'disp': True}, )
     logging.info('Completed MLE searh')
 
-    names = ('D1', 'D2', 'k1', 'k2', 'k12', 'gamma')
+    names = ('D1', 'D2', 'n1', 'n2', 'n12')
     MLE = {name: max.x[i] for i, name in enumerate(names)}
 
     return MLE
@@ -201,13 +203,14 @@ if __name__ == '__main__':
     lklh_func = get_log_likelihood_func_2_particles_x_link(ks=ks, zs=zs, M=M, dt=dt, alpha=alpha)
     # print('f', lklh_func(1, 1, 1e-8, 1e-8, 1e-8, 1e-8))
 
-    start_point = (1, 1, 1e-8, 1e-8, 1e-8, 1e-8)
-
-    def minimize_me(args):
-        # print('d', *args, type(args))
-        return -lklh_func(*args)
-
-    # print('c', minimize_me(*start_point))
-    max = minimize(minimize_me, start_point)
-    print(max.x)
+    # start_point = (1, 1, 1e-8, 1e-8, 1e-8, 1e-8)
+    #
+    # def minimize_me(args):
+    #     # print('d', *args, type(args))
+    #     return -lklh_func(*args)
+    #
+    # # print('c', minimize_me(*start_point))
+    # max = minimize(minimize_me, start_point)
+    # print(max.x)
+    print(get_MLE(ks=ks, zs=zs, M=M, dt=dt, alpha=alpha))
 # -lklh_func(*[1.e+00, 1.e+00, 1.e-08, 1.e-08, 1.e-08, 1.e-08])

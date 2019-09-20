@@ -18,7 +18,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from numpy import exp
+from numpy import cos, exp, sin
 from tqdm import tqdm, trange
 
 from stopwatch import stopwatch
@@ -26,21 +26,23 @@ from stopwatch import stopwatch
 # from hash_me import hash_me
 
 
-def simulate_2_particles_with_x_bond(D1=1.0, D2=1.0, k12=4e-7, gamma=1e-8, L=2, dt=0.01, T=1, r10=[-1, 0], r20=[1, 0], plot=True, save=True, file=r'.\trajectory.dat', seed=None):
+def simulate_2_particles_with_fixed_angle_bond(D1=1.0, D2=1.0, k12=4e-7, gamma=1e-8, angle=30, dt=0.01, T=1, plot=True, save=True, file=r'.\trajectory.dat', seed=None):
     """
     Simulate the trajectories of two particles connected by 1 spring and only along the x axis.
     Units of measurements:
     D1, D2 --- um^2/s,
     gamma --- kg/s,
     k12 --- kg/s^2,
-    r10, r20, L12 --- um,
-    T --- s
+    T --- s,
+    angle --- angle of bond beetween the particles in the lab system measured counterclockwise (in degrees).
     """
 
     # % Constants
     # kB = 1.38e-11  # kg*um^2/s^2/K
     atol = 1e-16
     rtol = 1e-6
+    L = 2
+    R0 = [-1, 0, 1, 0]
     # max_terms = 100
     # min_N = int(1e4)
 
@@ -65,7 +67,7 @@ def simulate_2_particles_with_x_bond(D1=1.0, D2=1.0, k12=4e-7, gamma=1e-8, L=2, 
 
     # R0 = np.transpose([np.hstack([r10, r20])])
     R = np.zeros((4, N + 1)) * np.nan
-    R[:, 0] = np.hstack([r10, r20])
+    R[:, 0] = R0
     # Q0 = R0 + Am1 @ a
 
     def check_zero(a):
@@ -114,15 +116,35 @@ def simulate_2_particles_with_x_bond(D1=1.0, D2=1.0, k12=4e-7, gamma=1e-8, L=2, 
         )
         R[:, i + 1] = R_next[:, 0]
 
+    # Rotate the result if necessary. Q is the rotation matrix
+    phi = angle / 180 * np.pi
+    Q = np.array([[cos(phi), - sin(phi), 0, 0],
+                  [sin(phi), cos(phi), 0, 0],
+                  [0, 0, cos(phi), -sin(phi)],
+                  [0, 0, sin(phi), cos(phi)]
+                  ])
+    # print(Q)
+    # print(R[:, 0])
+
+    R_rotated = R.copy()
+    if angle:
+        for i in range(N + 1):
+            # print(Q @ R[:, i, None])
+            R_rotated[:, i, None] = Q @ R[:, i, None]
+
+    R = R_rotated
+    # print(R[:, 0])
+    #  Displacements
     dR = R[:, 1:] - R[:, :-1]
 
     if plot:
         fig = plt.figure(1, clear=True)
-        plt.plot(R[0, :], R[1, :])
-        plt.plot(R[2, :], R[3, :])
+        plt.plot(R[0, :], R[1, :], label='1')
+        plt.plot(R[2, :], R[3, :], label='2')
         plt.xlabel('$x, \mu$m')
         plt.ylabel('$y, \mu$m')
         plt.axis('equal')
+        plt.legend()
 
         plt.show()
         if save:

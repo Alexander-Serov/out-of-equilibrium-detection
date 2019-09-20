@@ -22,8 +22,8 @@ from tqdm import tqdm, trange
 from Bin import Bin, make_adaptive_mesh
 from simulate import simulate_2_particles
 
-D1 = 0.4  # um^2/s; 0.4
-D2 = 5 * D1  # um^2/s
+D1 = 1  # um^2/s; 0.4
+D2 = 10  # um^2/s
 k12_lims = [1e-10, 1e-1]    # kg/s^2
 M = 12
 T = 1.0  # s

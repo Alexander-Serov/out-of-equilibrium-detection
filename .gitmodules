@@ -1,0 +1,3 @@
+[submodule "job-manager"]
+	path = job-manager
+	url = https://github.com/Alexander-Serov/job-manager

@@ -1,26 +1,34 @@
 """
 Calculate likelihoods that will be used for model comparison.
+Those are mainly likelihoods for periodogram components.
 """
 
 import copy
 import functools
 import logging
 
+import numdifftools as nd
 import numpy as np
 import scipy
 from matplotlib import pyplot as plt
 from numpy import cos, exp, log, pi, sin
 from numpy.linalg import eig, inv
 from scipy import integrate
+from scipy.fftpack import fft
 from scipy.optimize import minimize
 from scipy.special import gammaln, logsumexp
 
-# from scipy.stats import chi2
+# from plot import plot_periodogram
+from support import hash_from_dictionary, load_data, save_data
 
 ln_infty = - 20 * log(10)
 
 
 class J_class:
+    """
+    A class that allows one to perform calculations with Fourier images of the correlation function.
+    """
+
     def __init__(self, j, k, Jfunc, scale=1):
         self.scale = scale
         self.k = k
@@ -172,17 +180,20 @@ class matrix:
 
 
 @functools.lru_cache(maxsize=128)    # Cache the return values
-def get_sigma2_matrix_func(D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0):
-    # atol = 1e-8
+def get_sigma2_matrix_func(D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0, **kwargs):
+    """
+    This function constructs the sigma^2 matrix, which is the matrix of the coefficients of the chi-squared functions that then define the distribution of periodogram components:
+    $ |\ksi_k^\alpha|^2 \simeq \sum_i \sigma_{i \alpha}^2 \chi_2^2 $
+    Here
+    $ \ksi_n \equiv d R_n - \mu_n $
+
+    Here alpha corresponds to the analyzed coordinates: {x1, y1, x2, y2}, and k is supposedly the wave-number.
+    """
+    atol = 1e-10
 
     # Check values
     if np.any(np.array([D1, D2, n1, n2, n12]) < 0):
         return np.nan
-
-    # if k == 0:
-    #     logging.error(
-    #         'The current implementation does not calculate the likelihood for k=0. Skipping')
-    #     return None
 
     A = np.array([[-n1 - n12, 0, n12, 0],
                   [0, -n1, 0, 0],
@@ -192,22 +203,10 @@ def get_sigma2_matrix_func(D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0
     b = np.diag(np.sqrt([2 * D1, 2 * D1, 2 * D2, 2 * D2]))
 
     lambdas, U = np.linalg.eig(A)
-    # print(lambdas)
+    # print('lambs', lambdas)
     Um1 = inv(U)
 
-    # print('A', A)
-    # print('U check', U @ np.diag(lambdas) @ Um1 - A)
-    # print('l1', lambdas)
-    # print('U', U)
-    # print('v', U @ A @ Um1)
-
-    # # Analytical results from Mathematica
-    # g = np.sqrt((n1 - n2)**2 + 4 * n12**2)
-    # lambdas = np.array([-n1,
-    #                     -n2,
-    #                     (-g - n1 - 2 * n12 - n2) / 2,
-    #                     (g - n1 - 2 * n12 - n2) / 2])
-
+    # The decorator allows one to accelerate execution by saving previously calculated values
     @functools.lru_cache(maxsize=None)
     def J(i, j, k):
         """Return the Fourier image of the average correlation between the stochastic integrals"""
@@ -215,7 +214,8 @@ def get_sigma2_matrix_func(D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0
         j -= 1
         if i == j:
             lamb = lambdas[i]
-            if lamb == 0:
+            if np.isclose(lamb, 0, atol):
+                # A special limit for lambda close to 0, because otherwise the limit is not calculated correctly
                 J = M * dt**3 / 2
             else:
                 c1 = exp(lamb * dt)
@@ -259,6 +259,29 @@ def get_sigma2_matrix_func(D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0
         return sigma2s_full
 
 
+def estimate_sigma2_matrix(fit_params, ks_fit, true_parameters):
+    """
+    Evaluate the sigma2 matrix for the true and fit parameters.
+    The sigma2 matrix defines the coefficients of the linear combination of chi2 in the distributions of the periodogram components.
+    Need a function because it is repeated for different estimates.
+
+    true_parameters must containt M and dt
+    """
+    k = ks_fit[-1]
+
+    M, dt = [true_parameters[key] for key in 'M dt'.split()]
+
+    s2_mat_func = get_sigma2_matrix_func(alpha=None, **true_parameters)
+    s2_mat_true = s2_mat_func(k=k)
+
+    s2_mat_func = get_sigma2_matrix_func(alpha=None, **fit_params)
+    s2_mat_fit = s2_mat_func(k=k)
+
+    print('True sigma2 matrix: ', s2_mat_true)
+    print('Fit sigma2 matrix: ', s2_mat_fit)
+    print('Fit-true sigma2 matrix: ', s2_mat_fit - s2_mat_true)
+
+
 def ln_prior(D1, n1, D2=None, n2=None, n12=None):
     """
     Prior for the corresponding likelihoods
@@ -274,10 +297,17 @@ def ln_prior(D1, n1, D2=None, n2=None, n12=None):
         return a * log(beta) - gammaln(a) - (a + 1) * log(D) - beta / D
 
     def ln_n_prior(n):
-        """n_i prior"""
-        sigma_n = 3 * log(10)
+        """
+        n_i prior
 
-        return -log(n) - 1 / 2 * log(2 * pi * sigma_n**2) - (log(n) - log(n0))**2 / 2 / sigma_n**2
+        This prior is on log values of n allowing very wide distributions. I need to make them smaller, so that n1 = 1e-20 be not accessible..
+
+        Currently it is a Gaussian distribution for log(n), which does not prohibit 0. I must change it.
+
+        """
+        sigma_n = 2 * log(10)
+
+        return -log(n) - 1 / 2 * log(2 * pi * sigma_n**2) - (log(n) - log(n0) - sigma_n**2)**2 / 2 / sigma_n**2
 
     def ln_n_link_prior(n):
         """n_{12} link prior"""
@@ -334,27 +364,34 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
 
     # Defined the pdf function for a sum of chi-squared
     def ln_pdf_chi_squared_sum(z, sigma2s):
-        """Calculate the pdf for a sum of chi-squared of order 2 through residues of the characteristic function
+        """
+        Calculate the pdf for a sum of chi-squared of order 2 through residues of the characteristic function
 
         Formula:
         f(z) = 1/2 * \sum_j \e^{-z/2 \sigma^2_j} / (\prod_{n \neq j} (sigma2^_j - \sigma^2_n))
         """
         atol = 1e-18
 
+        # if np.all(sigma2s < 1e-10):
+        #     raise RuntimeError(
+        #         f'The input contains only 0 sigma2 values. \n Input parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
+
         # print('s2: ', sigma2s)
         sigma2s_nonzero = np.array([sigma2 for sigma2 in sigma2s if abs(sigma2) > atol])
 
         # Check if we have same sigmas
         if len(sigma2s_nonzero) > 1 and np.any(np.abs(np.diff(np.sort(sigma2s_nonzero))) < 1e-8):
-            str = "Encountered same sigmas. The current likelihood calculation procedure may fail. Sigma2 values: " + \
+            str = "Encountered similar sigmas. The current likelihood calculation through poles may fail. Sigma2 values: " + \
                 repr(sigma2s_nonzero)
             logging.warning(str)
             # print(str)
 
         if len(sigma2s_nonzero) == 0:
-            raise RuntimeError('Sigma2 filtering removed all values. Input sigmas: ' +
-                               np.array_str(sigma2s)
-                               + f'.\n Other parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
+            print('sigma2s: ', sigma2s)
+            logging.warn('All input sigma2 are effectively zero. Returning 0 probability. Input lg sigmas: ' +
+                         np.array_str(sigma2s)
+                         + f'.\n Other parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
+            return -np.inf
         # print(sigma2s_nonzero.dtype)
 
         n = len(sigma2s_nonzero)
@@ -392,7 +429,10 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
     try:
         ln_prob = ln_pdf_chi_squared_sum(z=z, sigma2s=sigma2s(alpha, k))
     except Exception as e:
-        print(sigma2s, D1, D2, n1, n2, n12, M, dt, alpha)
+        print(
+            f'Unable to calculate the pdf of a chi-squared sum. Alpha (component) and row: alpha={alpha}, k={k}')
+        print('The corresponding full sigma2 matrix:')
+        print(get_sigma2_matrix_func(D1, D2, n1, n2, n12, M, dt, alpha=None)(k))
         raise e
 
     # print('prob: ', prob)
@@ -435,13 +475,13 @@ def get_ln_likelihood_func_2_particles_x_link(ks, M, dt, zs_x=None, zs_y=None):
 
 def get_ln_likelihood_func_no_link(ks, M, dt, zs_x=None, zs_y=None):
     """
-    # Returns a log_10 of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
-    # The likelihood is not normalized over these parameters.
-    #
-    # Use alpha to specifythe coordinate for the likelihood:
-    #     alpha = 0 --- x1
-    #     alpha = 1 --- y1
-    #     alpha = [0,1] --- both x1 and y1
+    Returns a log_10 of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
+    The likelihood is not normalized over these parameters.
+
+    Use alpha to specifythe coordinate for the likelihood:
+        alpha = 0 --- x1
+        alpha = 1 --- y1
+        alpha = [0,1] --- both x1 and y1
     """
     D2 = 1
     n2 = 1
@@ -464,101 +504,6 @@ def get_ln_likelihood_func_no_link(ks, M, dt, zs_x=None, zs_y=None):
         return ln_lklh_val
 
     return ln_lklh
-
-
-def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None):
-    """
-    Input:
-        link, bool: whether a link between 2 particles should be considered in the likelihood
-    """
-
-    atol = 1e-8
-
-    # % Make a guess of the starting point
-    est = {}
-    r1 = np.concatenate([zs_x, zs_y]) / dt**2 / 2
-    est['D1'] = np.quantile(r1, 0.95)
-    est['D2'] = est['D1']
-    # print(r1, est)
-
-    if link:
-        ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
-            ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
-        names = ('D1', 'D2', 'n1', 'n2', 'n12')
-        start_point_est = {'D1': 1, 'n1': 1, 'D2': 1, 'n2': 1, 'n12': 1}
-
-        # def ln_prior_func(D1, D2, n1, n2, n12):
-        #     return ln_prior(D1=D1, D2=D2, n1=n1, n2=n2, n12=n12)
-
-        # other_args = {}
-    else:
-        ln_lklh_func = get_ln_likelihood_func_no_link(ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
-        names = ('D1', 'n1')
-        start_point_est = {'D1': 1, 'n1': 1}
-
-        # def ln_prior_func(kwargs):
-        #     return ln_prior(D1=D1, n1=n1)
-        # other_args = {}
-    d = len(names)
-
-    if not start_point:
-        start_point = start_point_est
-
-    # bnds = ((atol, None),) * 5
-
-    # elif alpha == 1:
-    #     # The y coordinate is only defined by D1 and n1, since it is independent.
-    #     start_point = {'D1': 1, 'n1': 1}
-    #     other_args = {a: 1 for a in ('D2', 'n2', 'n12')}
-    #     bnds = ((atol, None),) * 2
-    #     names = list(start_point.keys())
-
-    start_point_vals = list(start_point.values())
-    # print(names)
-
-    def minimize_me(args):
-        # print(args[0], names[0])
-        args_dict = {a: args[i] for i, a in enumerate(names)}
-        return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
-        # return - ln_prior(**args_dict)
-
-    print('Started MLE searh')
-    #  bounds=bnds,
-    # print(len(start_point), len(bnds))
-    # method='BFGS'
-
-    if 1:
-        method = 'BFGS'
-        options = {'disp': True}
-        tol = 1e-5
-    else:
-        method = 'Nelder-Mead'
-        options = {'disp': True, 'maxiter': d * 1000}
-        tol = 1e-5
-
-    max = minimize(minimize_me, start_point_vals, tol=tol, method=method,
-                   options=options)
-    print('MLE found: ', max.x, '\n')
-    print(max)
-    MLE = {names[i]: max.x[i] for i in range(len(max.x))}
-
-    # Estimate ln evidence through direct integration
-    # ln_model_evidence_direct = estimate_evidence_integral(ln_lklh_func, MLE=list(MLE.values()))
-    ln_model_evidence_direct = None
-
-    if method is 'Nelder-Mead':
-
-        return MLE, None, max, ln_model_evidence_direct
-
-    elif method is 'BFGS':
-        # Estimate the Bayes factor assuming a normal posterior distribution
-        # TODO: add prior
-        inv_hess = max.hess_inv
-        ln_model_evidence = ((d / 2) * log(2 * pi)
-                             + 1 / 2 * np.log(np.linalg.det(inv_hess))
-                             + ln_lklh_func(**MLE))
-
-        return MLE, ln_model_evidence, max, ln_model_evidence_direct
 
 
 def estimate_evidence_integral(ln_posterior, MLE, lims=None):
@@ -616,31 +561,143 @@ def get_mean(k=1, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0):
     """Get the mean of the stochastic variable corresponding to given springs, diffusivities and frequency"""
 
 
-# % == Tests
-if __name__ == '__main__':
-    k = 50
-    D1 = 1
-    dt = 0.3
-    z = D1 * dt**2
-    a = likelihood_2_particles_x_link_one_point(z, k=k, D1=D1, dt=dt)
-    # print(a)
+def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None, verbose=False):
+    """
+    Find the MLE of the distribution.
 
-    ks = [400, 401]
-    zs = np.array([0.5, 2]) * dt**2
-    M = 999
-    alpha = 0
-    lklh_func = get_log_likelihood_func_2_particles_x_link(
-        ks=ks, zs=zs, M=M, dt=dt, alpha=alpha)
-    # print('f', lklh_func(1, 1, 1e-8, 1e-8, 1e-8, 1e-8))
+    Make a guess of the starting point if none is supplied.
 
-    # start_point = (1, 1, 1e-8, 1e-8, 1e-8, 1e-8)
-    #
-    # def minimize_me(args):
-    #     # print('d', *args, type(args))
-    #     return -lklh_func(*args)
-    #
-    # # print('c', minimize_me(*start_point))
-    # max = minimize(minimize_me, start_point)
-    # print(max.x)
-    print(get_MLE(ks=ks, zs=zs, M=M, dt=dt, alpha=alpha))
-# -lklh_func(*[1.e+00, 1.e+00, 1.e-08, 1.e-08, 1.e-08, 1.e-08])
+    Input:
+        link, bool: whether a link between 2 particles should be considered in the likelihood
+    """
+
+    atol = 1e-8
+    ln_model_evidence = 0
+
+    np.random.seed()
+
+    # # % Make a guess of the starting point
+    # est = {}
+    # r1 = np.concatenate([zs_x, zs_y]) / dt**2 / 2
+    # est['D1'] = np.quantile(r1, 0.95)
+    # est['D2'] = est['D1']
+    # print(r1, est)
+
+    if link:
+        ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
+            ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
+        names = ('D1', 'D2', 'n1', 'n2', 'n12')
+        start_point_est = {'D1': 1, 'n1': 1e3, 'D2': 1, 'n2': 1e3, 'n12': 1e3}
+
+        # def ln_prior_func(D1, D2, n1, n2, n12):
+        #     return ln_prior(D1=D1, D2=D2, n1=n1, n2=n2, n12=n12)
+
+        # other_args = {}
+    else:
+        ln_lklh_func = get_ln_likelihood_func_no_link(
+            ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
+        names = ('D1', 'n1')
+        start_point_est = {'D1': 1, 'n1': 1e3}
+
+        # def ln_prior_func(kwargs):
+        #     return ln_prior(D1=D1, n1=n1)
+        # other_args = {}
+    d = len(names)
+
+    # If not start point provided, use the default one
+    if not start_point:
+        start_point = start_point_est
+
+    start_point_vals = list(start_point.values())
+
+    def minimize_me(args):
+        """Note that the input arguments are the logs of the corresponding parameters, i.e. log(D1), log(n1).
+        This is done for increasing the convergence properties because the parameters may have completely different scales.
+        """
+        args_dict = {a: args[i] for i, a in enumerate(names)}
+        return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
+
+    if verbose:
+        print('Started MLE search')
+    tol = 1e-5
+    grad_tol = tol * 10
+
+    if 1:
+        method = 'BFGS'
+        options = {'disp': verbose, 'gtol': tol}
+
+    else:
+        method = 'Nelder-Mead'
+        options = {'disp': verbose, 'maxiter': d * 1000}
+
+    max = minimize(minimize_me, start_point_vals, tol=tol, method=method,
+                   options=options)
+    MLE = {names[i]: max.x[i] for i in range(len(max.x))}
+
+    # Check if we are in a local optimum
+    grad = nd.Gradient(minimize_me)(max.x)
+    if not np.all(abs(grad) <= grad_tol):
+        logging.warn(
+            'The output gradient after optimization is too high. The algorithm might not have converged! Gradient: ' + repr(grad))
+
+    if verbose:
+        print('Check gradient at the minimum: ', nd.Gradient(minimize_me)(max.x))
+        print('MLE found: ', exp(max.x))
+        print('Prior ln value at MLE: ', ln_prior(**MLE), '\n')
+        print('Full results:\n', max)
+    # else:
+    #     print('MLE found!')
+
+    if not max.success:
+        logging.warning(f'MLE search procedure with link = {link} failed to converge')
+
+    # %% Estimate evidence as the integral across the parameters
+    # Estimate ln evidence through direct integration
+    # ln_model_evidence_direct = estimate_evidence_integral(ln_lklh_func, MLE=list(MLE.values()))
+    ln_model_evidence_direct = None
+
+    hess = nd.Hessian(minimize_me)(max.x)
+    det_inv_hess = 1 / np.linalg.det(hess)
+    print('det_inv_hess differentiation:', hess, det_inv_hess)
+    # print('grad', nd.Gradient(minimize_me)(max.x))
+
+    if method is 'Nelder-Mead':
+        1
+        # # As a dirty solution, launch BFGS on the found point
+        # options = {'disp': True}
+        # method = 'BFGS'
+        # start_point_vals = max.x
+        #
+        # Get an estimate of the Hessian matrix with nd tools
+        # hess = nd.Hessian(minimize_me)(max.x)
+        # det_inv_hess = 1 / np.linalg.det(hess)
+        # if verbose:
+        #     print('hess', hess, det_inv_hess)
+        #     print('grad', nd.Gradient(minimize_me)(max.x))
+        #
+        # # BFGS_output = minimize(minimize_me, start_point_vals * 1.001, tol=tol, method=method,
+        # #                        options=options)
+        # # print('Checking if got the same value when calculating the hessian with BFGS:\n',
+        # #       max.x, '\n', BFGS_output.x)
+        # # inv_hess = BFGS_output.hess_inv
+        #
+        # # return MLE, None, max, ln_model_evidence_direct
+
+    elif method is 'BFGS':
+        1
+        # Estimate the Bayes factor assuming a normal posterior distribution
+        # This estimate corresponds to the Eq. (5) from Kass and Raftery (1995)
+        # TODO: add prior
+        # inv_hess = max.hess_inv
+        # det_inv_hess = np.linalg.det(inv_hess)
+        # if verbose:
+        #     print('det_inv_hess BFGS', det_inv_hess)
+
+        # In the following, we subtract minimize_me because it is the negative log likelihood
+    ln_model_evidence = ((d / 2) * log(2 * pi)
+                         + 1 / 2 * log(det_inv_hess)
+                         - minimize_me(max.x))
+    # print('contributions to evidence:', (d / 2) * log(2 * pi), 1 / 2 * log(det_inv_hess),
+    #       ln_lklh_func(**MLE), ln_prior(**MLE))
+
+    return MLE, ln_model_evidence, max, ln_model_evidence_direct

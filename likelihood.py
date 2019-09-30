@@ -6,10 +6,12 @@ Those are mainly likelihoods for periodogram components.
 import copy
 import functools
 import logging
+from datetime import datetime
 
 import numdifftools as nd
 import numpy as np
 import scipy
+from filelock import FileLock
 from matplotlib import pyplot as plt
 from numpy import cos, exp, log, pi, sin
 from numpy.linalg import eig, inv
@@ -202,7 +204,14 @@ def get_sigma2_matrix_func(D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0
 
     b = np.diag(np.sqrt([2 * D1, 2 * D1, 2 * D2, 2 * D2]))
 
-    lambdas, U = np.linalg.eig(A)
+    # print('A', A)
+    # print(n1, n2, n12)
+    try:
+        lambdas, U = np.linalg.eig(A)
+    except Exception as e:
+        print(
+            f'Unable to calcualte eigenvalues of the A matrix. Check out the n12 value ({n12}). The matrix: ', A)
+        raise(e)
     # print('lambs', lambdas)
     Um1 = inv(U)
 
@@ -282,9 +291,12 @@ def estimate_sigma2_matrix(fit_params, ks_fit, true_parameters):
     print('Fit-true sigma2 matrix: ', s2_mat_fit - s2_mat_true)
 
 
-def ln_prior(D1, n1, D2=None, n2=None, n12=None):
+def get_ln_prior_func():
+    # (D1, n1, D2=None, n2=None, n12=None):
     """
-    Prior for the corresponding likelihoods
+    Prior for the corresponding likelihoods.
+
+    Also provide a sampler to sample from the prior.
     """
 
     ln_prior = 0
@@ -377,11 +389,11 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
         #         f'The input contains only 0 sigma2 values. \n Input parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
 
         # print('s2: ', sigma2s)
-        sigma2s_nonzero = np.array([sigma2 for sigma2 in sigma2s if abs(sigma2) > atol])
+        sigma2s_nonzero = np.array([sigma2 for sigma2 in sigma2s if abs(sigma2) > 0])
 
         # Check if we have same sigmas
-        if len(sigma2s_nonzero) > 1 and np.any(np.abs(np.diff(np.sort(sigma2s_nonzero))) < 1e-8):
-            str = "Encountered similar sigmas. The current likelihood calculation through poles may fail. Sigma2 values: " + \
+        if len(sigma2s_nonzero) > 1 and np.any(np.abs(np.diff(np.sort(sigma2s_nonzero))) == 0):
+            str = "Encountered exactly same sigmas. The current likelihood calculation through poles of order 1 may fail. Sigma2 values: " + \
                 repr(sigma2s_nonzero)
             logging.warning(str)
             # print(str)
@@ -561,143 +573,118 @@ def get_mean(k=1, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0):
     """Get the mean of the stochastic variable corresponding to given springs, diffusivities and frequency"""
 
 
-def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None, verbose=False):
+def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None, verbose=False, method='BFGS'):
     """
-    Find the MLE of the distribution.
+    Locate the MLE of the posterior. Estimate the evidence integral through Laplace approximation. Since the parameters have different scales, the search is conducted in the log space of the parameters.
 
     Make a guess of the starting point if none is supplied.
 
     Input:
         link, bool: whether a link between 2 particles should be considered in the likelihood
+        method: 'BFGS' or 'Nelder-Mead'
     """
 
-    atol = 1e-8
+    tol = 1e-5  # search tolerance
+    grad_tol = tol * 10  # gradient check tolerance
     ln_model_evidence = 0
-
     np.random.seed()
 
-    # # % Make a guess of the starting point
-    # est = {}
-    # r1 = np.concatenate([zs_x, zs_y]) / dt**2 / 2
-    # est['D1'] = np.quantile(r1, 0.95)
-    # est['D2'] = est['D1']
-    # print(r1, est)
-
+    # Choose the appropriate likelihood
     if link:
         ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
             ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
         names = ('D1', 'D2', 'n1', 'n2', 'n12')
         start_point_est = {'D1': 1, 'n1': 1e3, 'D2': 1, 'n2': 1e3, 'n12': 1e3}
-
-        # def ln_prior_func(D1, D2, n1, n2, n12):
-        #     return ln_prior(D1=D1, D2=D2, n1=n1, n2=n2, n12=n12)
-
-        # other_args = {}
     else:
         ln_lklh_func = get_ln_likelihood_func_no_link(
             ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
         names = ('D1', 'n1')
         start_point_est = {'D1': 1, 'n1': 1e3}
-
-        # def ln_prior_func(kwargs):
-        #     return ln_prior(D1=D1, n1=n1)
-        # other_args = {}
     d = len(names)
 
     # If not start point provided, use the default one
     if not start_point:
         start_point = start_point_est
+    start_point_vals = log(list(start_point.values()))
 
-    start_point_vals = list(start_point.values())
-
+    # Define two functions to minimize
     def minimize_me(args):
-        """Note that the input arguments are the logs of the corresponding parameters, i.e. log(D1), log(n1).
-        This is done for increasing the convergence properties because the parameters may have completely different scales.
-        """
+        """-ln posterior to minimize"""
         args_dict = {a: args[i] for i, a in enumerate(names)}
         return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
 
+    def minimize_me_log_params(ln_args):
+        """
+        Same as minimize me, but the args correspond to log of the parameters.
+        This seem to accelerate convergence, when D and n have different scales.
+        """
+        exponentiated = exp(ln_args)
+        # Check for infinite values after exponentiation
+        if np.any(~np.isfinite(exponentiated)):
+            return -np.inf
+
+        args_dict = {a: exponentiated[i] for i, a in enumerate(names)}
+
+        return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
+
+    # %% Find MLE
     if verbose:
         print('Started MLE search')
-    tol = 1e-5
-    grad_tol = tol * 10
 
-    if 1:
-        method = 'BFGS'
+    if method is 'BFGS':
         options = {'disp': verbose, 'gtol': tol}
 
-    else:
-        method = 'Nelder-Mead'
+    elif method is 'Nelder-Mead':
         options = {'disp': verbose, 'maxiter': d * 1000}
+    else:
+        options = {}
 
-    max = minimize(minimize_me, start_point_vals, tol=tol, method=method,
+    # print('minmz', start_point_vals, tol, method, options)
+    max = minimize(minimize_me_log_params, start_point_vals, tol=tol, method=method,
                    options=options)
-    MLE = {names[i]: max.x[i] for i in range(len(max.x))}
+    # Restore the parameters from log
+    MLE = {names[i]: exp(max.x[i]) for i in range(len(max.x))}
 
-    # Check if we are in a local optimum
-    grad = nd.Gradient(minimize_me)(max.x)
-    if not np.all(abs(grad) <= grad_tol):
-        logging.warn(
-            'The output gradient after optimization is too high. The algorithm might not have converged! Gradient: ' + repr(grad))
+    # Check convergence state
+    if not max.success:
+        logging.warning(f'MLE search procedure with link = {link} failed to converge')
+    # # Log the parameter values to a file
+    # convergence_errors_file = 'convergence errors.dat'
+    # lock_file = convergence_errors_file + '.lock'
+    #
+    # lock = FileLock(lock_file, timeout=1)
+    # with lock:
+    #
+    #     # str = f'Time: {datetime.now}, parameters: D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}, M={M}, dt={dt}.\n'
+    #     str = f'Time: {datetime.now}, parameters: {true_parameters}.\n'
+    #
+    #     open(convergence_errors_file, 'a').write(str)
 
+    # # Double check if a local optimum was found
+    # grad = nd.Gradient(minimize_me)(exp(max.x))
+    # if not np.all(abs(grad) <= grad_tol):
+    #     logging.warn(
+    #         'The output gradient after optimization is too high. The algorithm might not have converged! Gradient: ' + repr(grad))
+
+    # Estimate the Hessian in the MLE
+    hess = nd.Hessian(minimize_me)(exp(max.x))
+    det_inv_hess = 1 / np.linalg.det(hess)
+    if det_inv_hess < 0:
+        logging.warning(
+            f'The Hessian deteriminant is negative. Cannot calculate the evidence with link = {link}.')
+
+    # Print some output if verbose
     if verbose:
         print('Check gradient at the minimum: ', nd.Gradient(minimize_me)(max.x))
         print('MLE found: ', exp(max.x))
         print('Prior ln value at MLE: ', ln_prior(**MLE), '\n')
         print('Full results:\n', max)
-    # else:
-    #     print('MLE found!')
-
-    if not max.success:
-        logging.warning(f'MLE search procedure with link = {link} failed to converge')
+        print('det_inv_hess: ', det_inv_hess)
 
     # %% Estimate evidence as the integral across the parameters
-    # Estimate ln evidence through direct integration
-    # ln_model_evidence_direct = estimate_evidence_integral(ln_lklh_func, MLE=list(MLE.values()))
-    ln_model_evidence_direct = None
-
-    hess = nd.Hessian(minimize_me)(max.x)
-    det_inv_hess = 1 / np.linalg.det(hess)
-    print('det_inv_hess differentiation:', hess, det_inv_hess)
-    # print('grad', nd.Gradient(minimize_me)(max.x))
-
-    if method is 'Nelder-Mead':
-        1
-        # # As a dirty solution, launch BFGS on the found point
-        # options = {'disp': True}
-        # method = 'BFGS'
-        # start_point_vals = max.x
-        #
-        # Get an estimate of the Hessian matrix with nd tools
-        # hess = nd.Hessian(minimize_me)(max.x)
-        # det_inv_hess = 1 / np.linalg.det(hess)
-        # if verbose:
-        #     print('hess', hess, det_inv_hess)
-        #     print('grad', nd.Gradient(minimize_me)(max.x))
-        #
-        # # BFGS_output = minimize(minimize_me, start_point_vals * 1.001, tol=tol, method=method,
-        # #                        options=options)
-        # # print('Checking if got the same value when calculating the hessian with BFGS:\n',
-        # #       max.x, '\n', BFGS_output.x)
-        # # inv_hess = BFGS_output.hess_inv
-        #
-        # # return MLE, None, max, ln_model_evidence_direct
-
-    elif method is 'BFGS':
-        1
-        # Estimate the Bayes factor assuming a normal posterior distribution
-        # This estimate corresponds to the Eq. (5) from Kass and Raftery (1995)
-        # TODO: add prior
-        # inv_hess = max.hess_inv
-        # det_inv_hess = np.linalg.det(inv_hess)
-        # if verbose:
-        #     print('det_inv_hess BFGS', det_inv_hess)
-
-        # In the following, we subtract minimize_me because it is the negative log likelihood
+    # In the following, we subtract minimize_me because it is the negative log likelihood
     ln_model_evidence = ((d / 2) * log(2 * pi)
                          + 1 / 2 * log(det_inv_hess)
-                         - minimize_me(max.x))
-    # print('contributions to evidence:', (d / 2) * log(2 * pi), 1 / 2 * log(det_inv_hess),
-    #       ln_lklh_func(**MLE), ln_prior(**MLE))
+                         - minimize_me_log_params(max.x))
 
-    return MLE, ln_model_evidence, max, ln_model_evidence_direct
+    return MLE, ln_model_evidence, max

@@ -14,6 +14,7 @@ Simulate random walk of two particles connected by a spring subject to two diffe
 
 import logging
 import os
+import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,11 +23,10 @@ from numpy import cos, exp, sin
 from tqdm import tqdm, trange
 
 from stopwatch import stopwatch
+from support import hash_from_dictionary, load_data, save_data
 
-# from hash_me import hash_me
 
-
-def simulate_2_confined_particles_with_fixed_angle_bond(D1=1.0, D2=1.0, k12=4e-7, k1=4e-7, k2=4e-7, gamma=1e-8, angle=30, dt=0.01, L=2, T=1, plot=True, save=True, file=r'.\trajectory.dat', seed=None):
+def simulate_2_confined_particles_with_fixed_angle_bond(true_parameters, plot=True, recalculate=False, save_figure=True, file=r'.\trajectory.dat', seed=None):
     """
     Simulate the trajectories of two particles connected by 1 spring and only along the x axis.
     Units of measurements:
@@ -35,16 +35,55 @@ def simulate_2_confined_particles_with_fixed_angle_bond(D1=1.0, D2=1.0, k12=4e-7
     k12 --- kg/s^2,
     T --- s,
     angle --- angle of bond beetween the particles in the lab system measured counterclockwise (in degrees).
+
+    Input:
+    true_parameters --- a dictionary that must contain D1, D2, k12, T, dt, gamma, angle, L
     """
+
+    # Load parameters
+    # hash_sequence =
+    D1, D2, n1, n2, n12, T, dt, angle, L = [true_parameters[key]
+                                            for key in 'D1 D2 n1 n2 n12 T dt angle L'.split()]
 
     # % Constants
     # kB = 1.38e-11  # kg*um^2/s^2/K
     atol = 1e-16
     rtol = 1e-6
     R0 = [0, 0, L, 0]
+    bl_loaded = False
     # max_terms = 100
     # min_N = int(1e4)
-    n1, n2, n12 = np.array([k1, k2, k12]) / gamma
+
+    if seed is not None:
+        np.random.seed(seed)
+    else:
+        np.random.seed()
+
+    # n1, n2, n12 = np.array([k1, k2, k12]) / gamma
+
+    # Hash the parameters to be able to reload
+    hash, _ = hash_from_dictionary(dim=2, true_parameters=true_parameters)
+    filename = 'data/data_' + hash + '.pyc'
+
+    # Reload if requested
+    if not recalculate:
+        dict_data, loaded = load_data(hash)
+        # print('sim', dict_data, loaded)
+        # return
+        if loaded:
+            t, R, dR = [dict_data[key] for key in 't R dR'.split()]
+
+            # Plot
+            if plot:
+                plot_trajectories(R, save=save_figure)
+
+            # print(f'Trajectories reloaded. Hash: {hash}')
+            return t, R, dR, hash
+
+    # if loaded:
+    #     return t, R, dR, hash
+    # else:
+    #     print('not loaded')
 
     # w0 = k12 / gamma
     A = np.array([[-n1 - n12, 0, n12, 0],
@@ -137,22 +176,32 @@ def simulate_2_confined_particles_with_fixed_angle_bond(D1=1.0, D2=1.0, k12=4e-7
     #  Displacements
     dR = R[:, 1:] - R[:, :-1]
 
-    if plot:
-        fig = plt.figure(1, clear=True)
-        plt.plot(R[0, :], R[1, :], label='1')
-        plt.plot(R[2, :], R[3, :], label='2')
-        plt.xlabel('$x, \mu$m')
-        plt.ylabel('$y, \mu$m')
-        plt.axis('equal')
-        plt.legend()
+    # Save the trajectories and simulation parameters
+    # print(t, R, dR)
+    dict_data = {'t': t, 'R': R, 'dR': dR, **true_parameters}
+    # print('full dict', dict_data)
+    save_data(dict_data=dict_data, hash=hash)
 
-        plt.show()
-        if save:
-            plt.savefig('trajectory.png')
+    if plot:
+        plot_trajectories(R, save=save_figure)
     #
     # return (t, X, dX, Y, dY)
-    return (t, R, dR)
+    return t, R, dR, hash
 #
+
+
+def plot_trajectories(R, save=False):
+    fig = plt.figure(1, clear=True)
+    plt.plot(R[0, :], R[1, :], label='1')
+    plt.plot(R[2, :], R[3, :], label='2')
+    plt.xlabel('$x, \mu$m')
+    plt.ylabel('$y, \mu$m')
+    plt.axis('equal')
+    plt.legend()
+
+    plt.show()
+    if save:
+        plt.savefig('trajectory.png')
 
 
 # # %% Tests

@@ -1,0 +1,7 @@
+filelock
+numdifftools
+pandas
+numpy
+matplotlib
+scipy
+tqdm

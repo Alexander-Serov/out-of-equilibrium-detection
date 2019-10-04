@@ -13,15 +13,16 @@ import numpy as np
 import scipy
 from filelock import FileLock
 from matplotlib import pyplot as plt
-from numpy import cos, exp, log, pi, sin
+from numpy import cos, exp, log, pi, sin, sqrt
 from numpy.linalg import eig, inv
 from scipy import integrate
 from scipy.fftpack import fft
-from scipy.optimize import minimize
-from scipy.special import gammaln, logsumexp
+from scipy.optimize import minimize, root_scalar
+from scipy.special import erf, gamma, gammaincc, gammaln, logsumexp
 
 # from plot import plot_periodogram
-from support import hash_from_dictionary, load_data, save_data
+from support import (delete_data, hash_from_dictionary, load_data,
+                     load_MLE_guess, save_data, save_MLE_guess)
 
 ln_infty = - 20 * log(10)
 
@@ -291,61 +292,6 @@ def estimate_sigma2_matrix(fit_params, ks_fit, true_parameters):
     print('Fit-true sigma2 matrix: ', s2_mat_fit - s2_mat_true)
 
 
-def get_ln_prior_func():
-    # (D1, n1, D2=None, n2=None, n12=None):
-    """
-    Prior for the corresponding likelihoods.
-
-    Also provide a sampler to sample from the prior.
-    """
-
-    ln_prior = 0
-    n0 = 10**3      # s^{-1}, spring constant prior scale
-
-    def ln_D_prior(D):
-        """D_i prior"""
-        beta = 0.5  # um^2/s
-        a = 0.5     # no units
-        return a * log(beta) - gammaln(a) - (a + 1) * log(D) - beta / D
-
-    def ln_n_prior(n):
-        """
-        n_i prior
-
-        This prior is on log values of n allowing very wide distributions. I need to make them smaller, so that n1 = 1e-20 be not accessible..
-
-        Currently it is a Gaussian distribution for log(n), which does not prohibit 0. I must change it.
-
-        """
-        sigma_n = 2 * log(10)
-
-        return -log(n) - 1 / 2 * log(2 * pi * sigma_n**2) - (log(n) - log(n0) - sigma_n**2)**2 / 2 / sigma_n**2
-
-    def ln_n_link_prior(n):
-        """n_{12} link prior"""
-        a = 1
-
-        return log(a) - log(n0) - (a + 1) * log(1 + n / n0)
-
-    # Assemble the prior
-    if np.any(np.array([D1, n1]) <= 0):
-        return ln_infty
-    # print(1, D1, n1)
-    ln_prior += ln_D_prior(D1)
-    ln_prior += ln_n_prior(n1)
-
-    if all(v is not None for v in (D2, n2, n12)):
-        if np.any(np.array((D2, n2)) <= 0) or n12 < 0:
-            return ln_infty
-        # assert np.all([D2, n2, n12] >= 0)
-        # print(2, D2, n2, n12)
-        ln_prior += ln_D_prior(D2)
-        ln_prior += ln_n_prior(n2)
-        ln_prior += ln_n_link_prior(n12)
-
-    return ln_prior
-
-
 def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0):
     """
     Calculate likelihood of one power spectrum observation z for the frequency k.
@@ -399,10 +345,12 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
             # print(str)
 
         if len(sigma2s_nonzero) == 0:
-            print('sigma2s: ', sigma2s)
-            logging.warn('All input sigma2 are effectively zero. Returning 0 probability. Input lg sigmas: ' +
-                         np.array_str(sigma2s)
-                         + f'.\n Other parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
+            # print('sigma2s: ', sigma2s)
+            if k <= 5:
+                # The limit allows to suppress repetitive warnings.
+                logging.warn('All input sigma2 are effectively zero. Returning 0 probability. Input lg sigmas: ' +
+                             np.array_str(sigma2s)
+                             + f'.\n Other parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
             return -np.inf
         # print(sigma2s_nonzero.dtype)
 
@@ -573,7 +521,106 @@ def get_mean(k=1, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0):
     """Get the mean of the stochastic variable corresponding to given springs, diffusivities and frequency"""
 
 
-def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None, verbose=False, method='BFGS'):
+def get_ln_prior_func():
+    # (D1, n1, D2=None, n2=None, n12=None):
+    """
+    Prior for the corresponding likelihoods.
+
+    Also provide a sampler to sample from the prior.
+    """
+
+    beta = 0.5  # um^2/s
+    a = 0.5     # no units
+
+    def ln_D_prior(D):
+        """D_i prior"""
+        return a * log(beta) - gammaln(a) - (a + 1) * log(D) - beta / D
+
+    def cdf_D_prior(D):
+        if D > 0:
+            return gammaincc(a, beta / D)
+        else:
+            return 0
+
+    n0 = 10**3      # s^{-1}, spring constant prior scale
+    sigma_n = log(10)
+    mu_n = log(n0) + sigma_n**2
+
+    def ln_n_prior(n):
+        """
+        n_i prior
+
+        This prior is on log values of n allowing very wide distributions. I need to make them smaller, so that n1 = 1e-20 be not accessible..
+
+        Currently it is a Gaussian distribution for log(n), which does not prohibit 0. I must change it.
+
+        """
+        return -log(n) - 1 / 2 * log(2 * pi * sigma_n**2) - (log(n) - mu_n)**2 / 2 / sigma_n**2
+
+    def cdf_n_prior(n):
+        return 1 / 2 * (1 + erf((log(n) - mu_n) / np.sqrt(2) / sigma_n))
+
+    a = 1
+
+    def ln_n_link_prior(n):
+        """
+        n_{12} link prior.
+        A Lomax distribution.
+        """
+
+        return log(a) - log(n0) - (a + 1) * log(1 + n / n0)
+
+    def cdf_n_link_prior(n):
+        """CDF for the prior"""
+        return 1 - (1 + n / n0)**(-a)
+
+    # Assemble the prior function
+    def ln_prior(D1, n1, D2=None, n2=None, n12=None):
+        ln_result = 0
+        if np.any(np.array([D1, n1]) <= 0):
+            return ln_infty
+        ln_result += ln_D_prior(D1)
+        ln_result += ln_n_prior(n1)
+
+        if all(v is not None for v in (D2, n2, n12)):
+            if np.any(np.array((D2, n2)) <= 0) or n12 < 0:
+                return ln_infty
+            ln_result += ln_D_prior(D2)
+            ln_result += ln_n_prior(n2)
+            ln_result += ln_n_link_prior(n12)
+        return ln_result
+
+    # Assemble a sampler from the prior
+    def sample_from_the_prior(link):
+        """
+        Parameters:
+        link {bool} - set to true if need a prior with link
+        """
+        uni_sample = np.random.uniform(size=5)
+
+        # Convert the uniform sample into parameter values by sampling from that equation
+        sample = {}
+        if not link:
+            cdfs = [cdf_D_prior, cdf_n_prior]
+            names = ('D1', 'n1')
+        else:
+            names = ('D1', 'D2', 'n1', 'n2', 'n12')
+            cdfs = [cdf_D_prior, cdf_n_prior, cdf_D_prior, cdf_n_prior, cdf_n_link_prior]
+
+        for i, (cdf, name) in enumerate(zip(cdfs, names)):
+            if name is 'n12':
+                bracket = [0, 1e20]
+            else:
+                bracket = [1 - 10, 1e20]
+            sol = root_scalar(lambda y: cdf(y) - uni_sample[i], bracket=bracket)
+            sample[name] = sol.root
+
+        return sample
+
+    return ln_prior, sample_from_the_prior
+
+
+def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=None, verbose=False, method='BFGS'):
     """
     Locate the MLE of the posterior. Estimate the evidence integral through Laplace approximation. Since the parameters have different scales, the search is conducted in the log space of the parameters.
 
@@ -581,33 +628,51 @@ def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None, verbose=Fal
 
     Input:
         link, bool: whether a link between 2 particles should be considered in the likelihood
-        method: 'BFGS' or 'Nelder-Mead'
+        method: 'BFGS'. 'Nelder-Mead' is not yet implemented.
     """
 
+    tries = 50  # number of random starting points for the MLE search before abandoning
     tol = 1e-5  # search tolerance
     grad_tol = tol * 10  # gradient check tolerance
-    ln_model_evidence = 0
+    ln_model_evidence = np.nan
+    success = True
     np.random.seed()
+
+    if link:
+        names = ('D1', 'D2', 'n1', 'n2', 'n12')
+
+        def to_dict(D1, D2, n1, n2, n12):
+            return {key: val for key, val in zip(names, (D1, D2, n1, n2, n12))}
+    else:
+        names = ('D1', 'n1')
+
+        def to_dict(D1, n1):
+            return {key: val for key, val in zip(names, (D1, n1))}
+
+    def to_list(dict):
+        return [dict[key] for key in names]
+
+    d = len(names)
 
     # Choose the appropriate likelihood
     if link:
         ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
             ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
-        names = ('D1', 'D2', 'n1', 'n2', 'n12')
+
         start_point_est = {'D1': 1, 'n1': 1e3, 'D2': 1, 'n2': 1e3, 'n12': 1e3}
     else:
         ln_lklh_func = get_ln_likelihood_func_no_link(
             ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
-        names = ('D1', 'n1')
-        start_point_est = {'D1': 1, 'n1': 1e3}
-    d = len(names)
 
-    # If not start point provided, use the default one
+        start_point_est = {'D1': 1, 'n1': 1e3}
+
+    ln_prior, sample_from_the_prior = get_ln_prior_func()
+    # If not start point provided, sample a point from the prior
     if not start_point:
         start_point = start_point_est
-    start_point_vals = log(list(start_point.values()))
 
     # Define two functions to minimize
+
     def minimize_me(args):
         """-ln posterior to minimize"""
         args_dict = {a: args[i] for i, a in enumerate(names)}
@@ -637,17 +702,69 @@ def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None, verbose=Fal
     elif method is 'Nelder-Mead':
         options = {'disp': verbose, 'maxiter': d * 1000}
     else:
-        options = {}
+        # options = {}
+        raise RuntimeError('Method not implemented')
 
-    # print('minmz', start_point_vals, tol, method, options)
-    max = minimize(minimize_me_log_params, start_point_vals, tol=tol, method=method,
-                   options=options)
-    # Restore the parameters from log
-    MLE = {names[i]: exp(max.x[i]) for i in range(len(max.x))}
+    def retry(i, max):
+        print(
+            f'Failed to converge to the MLE on try {i}/{tries-1}. Retrying with another starting point...')
+        print('Full output: ', max)
+        verbose_tries = True
+        return
+
+    verbose_tries = verbose
+    for i in range(tries):
+
+        # On the first try, load the MLE guess from file. Else sample from the prior
+        if i == 0:
+            start_point, old_ln_value, success_load = load_MLE_guess(
+                hash_no_trial=hash_no_trial, link=link)
+            if not success_load:
+                start_point = sample_from_the_prior(link)
+            else:
+                print('Starting MLE guess loaded successfully: ', (start_point, old_ln_value))
+        else:
+            start_point = sample_from_the_prior(link)
+
+        if verbose_tries:
+            print(f'Starting point: {start_point}')
+        start_point_vals = log(to_list(start_point))
+        max = minimize(minimize_me_log_params, start_point_vals, tol=tol, method=method,
+                       options=options)
+        # Restore the parameters from log
+        MLE = {names[i]: exp(max.x[i]) for i in range(len(max.x))}
+        if max.success:
+            """Leave cycle if returned success and the calculated Bayes factor is not nan"""
+
+            # Estimate the Hessian in the MLE
+            hess = nd.Hessian(minimize_me)(exp(max.x))
+            det_inv_hess = 1 / np.linalg.det(hess)
+            if det_inv_hess < 0:
+                logging.warning(
+                    f'The Hessian deteriminant is negative. Cannot calculate the evidence with link = {link}.')
+                retry(i, max)
+                continue
+
+            # Estimate evidence as the integral across the parameters
+            # In the following, we subtract minimize_me because it is the negative log likelihood
+            ln_model_evidence = ((d / 2) * log(2 * pi)
+                                 + 1 / 2 * log(det_inv_hess)
+                                 - minimize_me_log_params(max.x))
+            if not np.isnan(ln_model_evidence):
+                break
+            else:
+                retry(i, max)
+        elif i >= tries - 1:
+            print(
+                f'MLE search procedure with link = {link} failed to converge. Abandon search. The trouble trajectory will be recalculated')
+            success = False
+
+        elif i < tries - 1:
+            retry(i, max)
 
     # Check convergence state
-    if not max.success:
-        logging.warning(f'MLE search procedure with link = {link} failed to converge')
+    # if not max.success:
+    #     logging.warning(f'MLE search procedure with link = {link} failed to converge')
     # # Log the parameter values to a file
     # convergence_errors_file = 'convergence errors.dat'
     # lock_file = convergence_errors_file + '.lock'
@@ -666,12 +783,10 @@ def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None, verbose=Fal
     #     logging.warn(
     #         'The output gradient after optimization is too high. The algorithm might not have converged! Gradient: ' + repr(grad))
 
-    # Estimate the Hessian in the MLE
-    hess = nd.Hessian(minimize_me)(exp(max.x))
-    det_inv_hess = 1 / np.linalg.det(hess)
-    if det_inv_hess < 0:
-        logging.warning(
-            f'The Hessian deteriminant is negative. Cannot calculate the evidence with link = {link}.')
+    if success:
+        """Save the MLE guess for further use"""
+        save_MLE_guess(hash_no_trial=hash_no_trial, MLE_guess=MLE,
+                       ln_posterior_value=-minimize_me_log_params(max.x), link=link)
 
     # Print some output if verbose
     if verbose:
@@ -681,10 +796,4 @@ def get_MLE(ks, M, dt, link, zs_x=None, zs_y=None, start_point=None, verbose=Fal
         print('Full results:\n', max)
         print('det_inv_hess: ', det_inv_hess)
 
-    # %% Estimate evidence as the integral across the parameters
-    # In the following, we subtract minimize_me because it is the negative log likelihood
-    ln_model_evidence = ((d / 2) * log(2 * pi)
-                         + 1 / 2 * log(det_inv_hess)
-                         - minimize_me_log_params(max.x))
-
-    return MLE, ln_model_evidence, max
+    return MLE, ln_model_evidence, max, success

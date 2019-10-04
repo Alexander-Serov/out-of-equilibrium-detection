@@ -346,11 +346,9 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
 
         if len(sigma2s_nonzero) == 0:
             # print('sigma2s: ', sigma2s)
-            if k <= 5:
-                # The limit allows to suppress repetitive warnings.
-                logging.warn('All input sigma2 are effectively zero. Returning 0 probability. Input lg sigmas: ' +
-                             np.array_str(sigma2s)
-                             + f'.\n Other parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
+            logging.warn('All input sigma2 are effectively zero. Returning 0 probability. Input lg sigmas: ' +
+                         np.array_str(sigma2s)
+                         + f'.\n Other parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
             return -np.inf
         # print(sigma2s_nonzero.dtype)
 
@@ -611,7 +609,7 @@ def get_ln_prior_func():
             if name is 'n12':
                 bracket = [0, 1e20]
             else:
-                bracket = [1 - 10, 1e20]
+                bracket = [1e-10, 1e20]
             sol = root_scalar(lambda y: cdf(y) - uni_sample[i], bracket=bracket)
             sample[name] = sol.root
 
@@ -631,11 +629,13 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         method: 'BFGS'. 'Nelder-Mead' is not yet implemented.
     """
 
-    tries = 50  # number of random starting points for the MLE search before abandoning
+    tries = 5  # number of random starting points for the MLE search before abandoning
     tol = 1e-5  # search tolerance
     grad_tol = tol * 10  # gradient check tolerance
     ln_model_evidence = np.nan
     success = True
+    bl_log_parameter_search = False
+    prob_new_start = 2 / 3
     np.random.seed()
 
     if link:
@@ -705,14 +705,15 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         # options = {}
         raise RuntimeError('Method not implemented')
 
-    def retry(i, max):
+    def retry(i, min):
         print(
-            f'Failed to converge to the MLE on try {i}/{tries-1}. Retrying with another starting point...')
-        print('Full output: ', max)
+            f'\nFailed to converge to the MLE on try {i}/{tries-1}. Retrying with another starting point...')
+        print('Full output: ', min)
         verbose_tries = True
         return
 
     verbose_tries = verbose
+    seen_minima = {}
     for i in range(tries):
 
         # On the first try, load the MLE guess from file. Else sample from the prior
@@ -724,46 +725,110 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
             else:
                 print('Starting MLE guess loaded successfully: ', (start_point, old_ln_value))
         else:
-            start_point = sample_from_the_prior(link)
+            # If it's not the first try, either use one of the best previous estimates or sample a new point from the prior
+            if np.random.uniform() <= prob_new_start:
+
+                start_point = sample_from_the_prior(link)
+                print(
+                    f'Sampling an origin point from the prior (p={prob_new_start:.3f}):\n', start_point, '\n')
+
+            else:
+                # Take the best point seen so far
+
+                best_val = np.min(list(seen_minima.keys()))
+                # print('bv', seen_minima[best_val])
+                start_point = to_dict(*seen_minima[best_val])
+                print(f'Taking the best previously seen point as the starting point (p={1-prob_new_start:.3f}):\n',
+                      to_dict(*seen_minima[best_val]), '\n')
 
         if verbose_tries:
             print(f'Starting point: {start_point}')
-        start_point_vals = log(to_list(start_point))
-        max = minimize(minimize_me_log_params, start_point_vals, tol=tol, method=method,
+        if bl_log_parameter_search:
+            start_point_vals = log(to_list(start_point))
+            fnc = minimize_me_log_params
+        else:
+            start_point_vals = to_list(start_point)
+            fnc = minimize_me
+        min = minimize(fnc, start_point_vals, tol=tol, method=method,
                        options=options)
+
+        # Evaluate if it's the lowest point that we've seen
+        old_mins = list(seen_minima.keys())
+        if len(old_mins) > 0:
+            if min.fun <= np.min(old_mins):
+                lowest = True
+            else:
+                lowest = False
+        else:
+            lowest = True
+
+        # Store the found point in any case
+        # print(min)
+        seen_minima[min.fun] = min.x
+
         # Restore the parameters from log
-        MLE = {names[i]: exp(max.x[i]) for i in range(len(max.x))}
-        if max.success:
-            """Leave cycle if returned success and the calculated Bayes factor is not nan"""
+        if bl_log_parameter_search:
+            MLE = {names[i]: exp(min.x[i]) for i in range(len(min.x))}
+        else:
+            MLE = {names[i]: min.x[i] for i in range(len(min.x))}
+        if min.success and lowest:
+            """Leave cycle if returned success and the calculated Bayes factor is not nan.
+            Never return a point if it's not the lowest we've seen so far.
+            """
 
             # Estimate the Hessian in the MLE
-            hess = nd.Hessian(minimize_me)(exp(max.x))
-            det_inv_hess = 1 / np.linalg.det(hess)
+            if bl_log_parameter_search:
+                hess = nd.Hessian(minimize_me)(exp(min.x))
+                det_inv_hess = 1 / np.linalg.det(hess)
+            elif method is 'BFGS' and np.linalg.det(min.hess_inv) >= 1e-8:
+                # Require that the returned Hessian has really been evaluated
+                hess_inv = min.hess_inv
+                det_inv_hess = np.linalg.det(hess_inv)
+            else:
+                # Otherwise, manually estimate the Hessian
+                hess = nd.Hessian(minimize_me)(min.x)
+                det_inv_hess = 1 / np.linalg.det(hess)
+
             if det_inv_hess < 0:
-                logging.warning(
-                    f'The Hessian deteriminant is negative. Cannot calculate the evidence with link = {link}.')
-                retry(i, max)
+                print(
+                    f'The Hessian deteriminant is negative ({det_inv_hess:.3g}). Cannot calculate the evidence with link = {link}')
+                retry(i, min)
                 continue
 
             # Estimate evidence as the integral across the parameters
             # In the following, we subtract minimize_me because it is the negative log likelihood
             ln_model_evidence = ((d / 2) * log(2 * pi)
                                  + 1 / 2 * log(det_inv_hess)
-                                 - minimize_me_log_params(max.x))
+                                 - fnc(min.x))
             if not np.isnan(ln_model_evidence):
                 break
             else:
-                retry(i, max)
+                retry(i, min)
         elif i >= tries - 1:
             print(
-                f'MLE search procedure with link = {link} failed to converge. Abandon search. The trouble trajectory will be recalculated')
-            success = False
+                f'MLE search procedure with link = {link} failed to converge. Taking the best point seen so far.')
+            # old_mins = list(seen_minima.keys())
+            best_val = np.min(list(seen_minima.keys()))
+            best_MLE = seen_minima[best_val]
+            # print(
+
+            hess = nd.Hessian(minimize_me)(best_MLE)
+            det_inv_hess = 1 / np.linalg.det(hess)
+
+            if det_inv_hess > 0:
+                ln_model_evidence = (
+                    (d / 2) * log(2 * pi)
+                    + 1 / 2 * log(det_inv_hess)
+                    - fnc(best_MLE))
+                success = True
+            else:
+                success = False
 
         elif i < tries - 1:
-            retry(i, max)
+            retry(i, min)
 
     # Check convergence state
-    # if not max.success:
+    # if not min.success:
     #     logging.warning(f'MLE search procedure with link = {link} failed to converge')
     # # Log the parameter values to a file
     # convergence_errors_file = 'convergence errors.dat'
@@ -778,7 +843,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     #     open(convergence_errors_file, 'a').write(str)
 
     # # Double check if a local optimum was found
-    # grad = nd.Gradient(minimize_me)(exp(max.x))
+    # grad = nd.Gradient(minimize_me)(exp(min.x))
     # if not np.all(abs(grad) <= grad_tol):
     #     logging.warn(
     #         'The output gradient after optimization is too high. The algorithm might not have converged! Gradient: ' + repr(grad))
@@ -786,14 +851,14 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     if success:
         """Save the MLE guess for further use"""
         save_MLE_guess(hash_no_trial=hash_no_trial, MLE_guess=MLE,
-                       ln_posterior_value=-minimize_me_log_params(max.x), link=link)
+                       ln_posterior_value=-min.fun, link=link)
 
     # Print some output if verbose
     if verbose:
-        print('Check gradient at the minimum: ', nd.Gradient(minimize_me)(max.x))
-        print('MLE found: ', exp(max.x))
-        print('Prior ln value at MLE: ', ln_prior(**MLE), '\n')
-        print('Full results:\n', max)
+        # print('Check gradient at the minimum: ', nd.Gradient(minimize_me)(min.x))
+        # print('MLE found: ', exp(min.x))
+        # print('Prior ln value at MLE: ', ln_prior(**MLE), '\n')
+        print('Full results:\n', min)
         print('det_inv_hess: ', det_inv_hess)
 
-    return MLE, ln_model_evidence, max, success
+    return MLE, ln_model_evidence, min, success

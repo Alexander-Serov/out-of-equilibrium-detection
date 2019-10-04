@@ -629,13 +629,13 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         method: 'BFGS'. 'Nelder-Mead' is not yet implemented.
     """
 
-    tries = 5  # number of random starting points for the MLE search before abandoning
+    tries = 50  # number of random starting points for the MLE search before abandoning
     tol = 1e-5  # search tolerance
     grad_tol = tol * 10  # gradient check tolerance
     ln_model_evidence = np.nan
     success = True
     bl_log_parameter_search = False
-    prob_new_start = 2 / 3
+    # prob_new_start = 2 / 3
     np.random.seed()
 
     if link:
@@ -714,6 +714,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
     verbose_tries = verbose
     seen_minima = {}
+    can_repeat = True
     for i in range(tries):
 
         # On the first try, load the MLE guess from file. Else sample from the prior
@@ -723,23 +724,21 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
             if not success_load:
                 start_point = sample_from_the_prior(link)
             else:
-                print('Starting MLE guess loaded successfully: ', (start_point, old_ln_value))
-        else:
+                print('Starting MLE guess loaded successfully:\n', (start_point, old_ln_value))
+            can_repeat = True
+        elif can_repeat and min.status == 2:
+                # Repear from the last found point
+                # best_val = np.min(list(seen_minima.keys()))
+            start_point = to_dict(*min.x)
+            can_repeat = False
+            print(f'Repeating with the last found point to check convergence.\n')
+
             # If it's not the first try, either use one of the best previous estimates or sample a new point from the prior
-            if np.random.uniform() <= prob_new_start:
-
-                start_point = sample_from_the_prior(link)
-                print(
-                    f'Sampling an origin point from the prior (p={prob_new_start:.3f}):\n', start_point, '\n')
-
-            else:
-                # Take the best point seen so far
-
-                best_val = np.min(list(seen_minima.keys()))
-                # print('bv', seen_minima[best_val])
-                start_point = to_dict(*seen_minima[best_val])
-                print(f'Taking the best previously seen point as the starting point (p={1-prob_new_start:.3f}):\n',
-                      to_dict(*seen_minima[best_val]), '\n')
+        else:
+            start_point = sample_from_the_prior(link)
+            can_repeat = True
+            print(
+                f'Sampling an origin point from the prior:\n', start_point, '\n')
 
         if verbose_tries:
             print(f'Starting point: {start_point}')
@@ -803,13 +802,15 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
             if not np.isnan(ln_model_evidence):
                 break
             else:
+                print('Model evidence is nan. Recalculating')
                 retry(i, min)
         elif i >= tries - 1:
-            print(
-                f'MLE search procedure with link = {link} failed to converge. Taking the best point seen so far.')
+
             # old_mins = list(seen_minima.keys())
             best_val = np.min(list(seen_minima.keys()))
             best_MLE = seen_minima[best_val]
+            print(
+                f'MLE search procedure with link = {link} failed to converge. Taking the best point seen so far:\n', (best_val, best_MLE))
             # print(
 
             hess = nd.Hessian(minimize_me)(best_MLE)
@@ -825,6 +826,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
                 success = False
 
         elif i < tries - 1:
+            # print('Retrying because not success or not the lowest seen')
             retry(i, min)
 
     # Check convergence state

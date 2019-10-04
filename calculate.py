@@ -100,7 +100,7 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
     PY_fit = PY[fit_indices]
 
     # # %% MLE and evidence for the model without a link
-    print('Calculating no-link evidence...')
+    print('\nCalculating no-link evidence...')
     MLE_free, ln_evidence_free, max_free, success_free = get_MLE(
         ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=False, verbose=verbose)
 
@@ -111,7 +111,7 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
 
     # %% Infer the MLE for the model with link
     if success_free:
-        print('Calculating evidence with link...')
+        print('\nCalculating evidence with link...')
         MLE_link, ln_evidence_with_link, max_link, success_link = get_MLE(
             ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=True, verbose=verbose)  # , start_point=true_parameters)
         if success_link:

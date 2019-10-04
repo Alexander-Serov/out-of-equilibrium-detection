@@ -2,14 +2,14 @@
 Investigate the behavior of connected particles through statistical tests based on a periodogram
 """
 
-try:
-    bl_has_run
-
-except Exception:
-    %matplotlib
-    %load_ext autoreload
-    %autoreload 2
-    bl_has_run = True
+# try:
+#     bl_has_run
+#
+# except Exception:
+#     %matplotlib
+#     %load_ext autoreload
+#     %autoreload 2
+#     bl_has_run = True
 
 import cProfile
 import os
@@ -67,10 +67,10 @@ lg_BF_vals = plot_diffusivity_dependence(seed=0, verbose=False, recalculate=Fals
 
 # %%
 1
-fit_params = {'D1': 0.009556111157819758, 'D2': 0.16340672297424766,
-              'n1': 5.050123555707306e2, 'n2': 127.64011605246695, 'n12': 23.693359560798886 * 0}
-estimate_sigma2_matrix(fit_params=fit_params, ks_fit=[
-                       11], true_parameters=true_parameters)  # %% Simulate the particle system
+# fit_params = {'D1': 0.009556111157819758, 'D2': 0.16340672297424766,
+#               'n1': 5.050123555707306e2, 'n2': 127.64011605246695, 'n12': 23.693359560798886 * 0}
+# estimate_sigma2_matrix(fit_params=fit_params, ks_fit=[
+#                        11], true_parameters=true_parameters)  # %% Simulate the particle system
 # # Set recalculate = True to force recalculation at every start
 # # Otherwise the last results will be reloaded
 # t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
@@ -201,3 +201,5 @@ estimate_sigma2_matrix(fit_params=fit_params, ks_fit=[
 # fig.show()
 
 # f'{False:b}'
+
+np.linalg.det(np.ones((2, 2)))

@@ -181,7 +181,7 @@ def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, gamma, T, dt, angle
             break
         else:
             print(
-                f'Resimulating trajectory because the MLE was not found during try {tr}/{tries-1}')
+                f'Resimulating trajectory because the final Bayes factor per point of trajectory {np.abs(lg_BF_val)/M} was higher than {max_abs_lg_B_per_M:3g} indicating failed MLE search. This was try {tr}/{tries-1}')
             delete_data(hash)
 
     return lg_BF_val, ln_evidence_with_link, ln_evidence_free

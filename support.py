@@ -150,8 +150,10 @@ class stopwatch:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.end = time.time()
         delta = self.end - self.start
+        mins = int(np.floor(delta / 60))
+        secs = delta - 60 * mins
         if self.verbose:
-            print(f'\n{self.name} completed in {round(delta, 2)} s.\n')
+            print(f'\n{self.name} completed in {mins} mins {round(secs, 1)} s.\n')
 
 
 def stopwatch_dec(func):
@@ -278,3 +280,28 @@ def load_MLE_guess(hash_no_trial, link):
     #     print('MLE guess loaded successfully: ', MLE_guess)
 
     return MLE_guess, old_ln_value, success
+
+
+def save_number_of_close_values(link, val, tries, frac):
+    """
+    """
+    filename = 'statistics.dat'
+    lock_file = filename + '.lock'
+    lock = FileLock(lock_file, timeout=1)
+
+    if not os.path.exists(filename):
+        with lock:
+            with open(filename, 'w') as file:
+                strng = f'Link presence\tNo of similar function values in MLE search results\tTries\tFraction\n'
+                file.write(strng)
+
+    # Save to file
+    try:
+        with lock:
+            with open(filename, 'a') as file:
+                strng = f'{link:d}\t{val:d}\t{tries:d}\t{frac:.3f}\n'
+                file.write(strng)
+    except:
+        logging.warn('Unable to the number of close values')
+
+    return

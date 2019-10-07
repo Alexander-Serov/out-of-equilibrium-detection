@@ -7,6 +7,7 @@ import copy
 import functools
 import logging
 from datetime import datetime
+from operator import itemgetter
 
 import numdifftools as nd
 import numpy as np
@@ -22,9 +23,13 @@ from scipy.special import erf, gamma, gammaincc, gammaln, logsumexp
 
 # from plot import plot_periodogram
 from support import (delete_data, hash_from_dictionary, load_data,
-                     load_MLE_guess, save_data, save_MLE_guess)
+                     load_MLE_guess, save_data, save_MLE_guess,
+                     save_number_of_close_values)
 
 ln_infty = - 20 * log(10)
+
+# used to evaluate how many points after optimization are similar on the average
+# prior_sampling_statistics_file = 'statistics.dat'
 
 
 class J_class:
@@ -541,7 +546,7 @@ def get_ln_prior_func():
             return 0
 
     n0 = 10**3      # s^{-1}, spring constant prior scale
-    sigma_n = log(10)
+    sigma_n = log(10) / 2
     mu_n = log(n0) + sigma_n**2
 
     def ln_n_prior(n):
@@ -629,7 +634,9 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         method: 'BFGS'. 'Nelder-Mead' is not yet implemented.
     """
 
-    tries = 50  # number of random starting points for the MLE search before abandoning
+    # number of random starting points for the MLE search before abandoning
+    # Based on 99% chance estimate in a simple binomial model.
+    tries = 2 + 1 if not link else 40 + 1
     tol = 1e-5  # search tolerance
     grad_tol = tol * 10  # gradient check tolerance
     ln_model_evidence = np.nan
@@ -706,16 +713,18 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         raise RuntimeError('Method not implemented')
 
     def retry(i, min):
-        print(
-            f'\nFailed to converge to the MLE on try {i}/{tries-1}. Retrying with another starting point...')
-        print('Full output: ', min)
-        verbose_tries = True
+        print('Found minimum: ', min.fun, ' at ', to_dict(*min.x))
+        # print(
+        #     f'Retrying with another starting point. Finished try {i+1}/{tries}.\n')
+        # print('Full output: ', min)
+        # verbose_tries = True
         return
 
-    verbose_tries = verbose
-    seen_minima = {}
+    verbose_tries = True
+    mins = []
     can_repeat = True
     for i in range(tries):
+        print(f'\nMLE search. Try {i+1}/{tries}...')
 
         # On the first try, load the MLE guess from file. Else sample from the prior
         if i == 0:
@@ -723,58 +732,60 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
                 hash_no_trial=hash_no_trial, link=link)
             if not success_load:
                 start_point = sample_from_the_prior(link)
+                print(
+                    f'Sampling an origin point from the prior:\n', start_point)
             else:
                 print('Starting MLE guess loaded successfully:\n', (start_point, old_ln_value))
-            can_repeat = True
-        elif can_repeat and min.status == 2:
-                # Repear from the last found point
-                # best_val = np.min(list(seen_minima.keys()))
-            start_point = to_dict(*min.x)
-            can_repeat = False
-            print(f'Repeating with the last found point to check convergence.\n')
 
-            # If it's not the first try, either use one of the best previous estimates or sample a new point from the prior
-        else:
+        elif i == tries - 1:
+            # On the last try, retry from the best guess so far
+            mins.sort(key=itemgetter(0))
+            start_point = to_dict(*mins[0][1].x)
+            print('On the last try, retry from the best guess so far:\n', start_point)
+
+            # Also estimate how many of the best values are close
+            # frac is the fraction of tries that the best minimum was found if there were no retrials from the best
+            atol = 0.1
+            fun_vals = [min[0] for min in mins]
+            diffs = np.array([np.abs(fun_vals[i] - fun_vals[0]) for i in range(1, len(fun_vals))])
+            # add 1 to count the value itself
+            times_best_found = np.sum(diffs < atol) + 1
+            real_tries = tries - 1  # subtract 1 because repeating from the best point
+            # Store the value in a file. Remember there is always at least 1 because we recalculate the best point
+            frac = times_best_found / real_tries
+            save_number_of_close_values(link, times_best_found, real_tries, frac)
+
+        else:  # sample from the prior
             start_point = sample_from_the_prior(link)
-            can_repeat = True
             print(
-                f'Sampling an origin point from the prior:\n', start_point, '\n')
+                f'Sampling an origin point from the prior:\n', start_point)
 
-        if verbose_tries:
-            print(f'Starting point: {start_point}')
+        # if verbose_tries:
+        #     print(f'Starting point: {start_point}')
         if bl_log_parameter_search:
             start_point_vals = log(to_list(start_point))
             fnc = minimize_me_log_params
         else:
             start_point_vals = to_list(start_point)
             fnc = minimize_me
+
         min = minimize(fnc, start_point_vals, tol=tol, method=method,
                        options=options)
 
-        # Evaluate if it's the lowest point that we've seen
-        old_mins = list(seen_minima.keys())
-        if len(old_mins) > 0:
-            if min.fun <= np.min(old_mins):
-                lowest = True
-            else:
-                lowest = False
-        else:
-            lowest = True
+        # Store the found point if the hessian is not diagonal (because it's not a new point then)
+        # if np.abs(np.linalg.det(min.hess_inv)) >= 1e-8:
+        mins.append((min.fun, min))
+        retry(i, min)
 
-        # Store the found point in any case
-        # print(min)
-        seen_minima[min.fun] = min.x
+    # Sort the results
+    mins.sort(key=itemgetter(0))
 
-        # Restore the parameters from log
-        if bl_log_parameter_search:
-            MLE = {names[i]: exp(min.x[i]) for i in range(len(min.x))}
-        else:
-            MLE = {names[i]: min.x[i] for i in range(len(min.x))}
-        if min.success and lowest:
-            """Leave cycle if returned success and the calculated Bayes factor is not nan.
-            Never return a point if it's not the lowest we've seen so far.
-            """
+    print(f'\nFound the following minimi in {tries} tries:\n', [min[0] for min in mins])
 
+    # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
+    success = False
+    for _, min in mins:
+        if min.success or (not min.success and min.status == 2):
             # Estimate the Hessian in the MLE
             if bl_log_parameter_search:
                 hess = nd.Hessian(minimize_me)(exp(min.x))
@@ -788,79 +799,38 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
                 hess = nd.Hessian(minimize_me)(min.x)
                 det_inv_hess = 1 / np.linalg.det(hess)
 
-            if det_inv_hess < 0:
-                print(
-                    f'The Hessian deteriminant is negative ({det_inv_hess:.3g}). Cannot calculate the evidence with link = {link}')
-                retry(i, min)
+            if det_inv_hess <= 0:
+                # Make sure the hessain makes sense (is a minimum)
                 continue
 
-            # Estimate evidence as the integral across the parameters
+            # Calcualte model evidence
             # In the following, we subtract minimize_me because it is the negative log likelihood
             ln_model_evidence = ((d / 2) * log(2 * pi)
                                  + 1 / 2 * log(det_inv_hess)
                                  - fnc(min.x))
             if not np.isnan(ln_model_evidence):
-                break
-            else:
-                print('Model evidence is nan. Recalculating')
-                retry(i, min)
-        elif i >= tries - 1:
-
-            # old_mins = list(seen_minima.keys())
-            best_val = np.min(list(seen_minima.keys()))
-            best_MLE = seen_minima[best_val]
-            print(
-                f'MLE search procedure with link = {link} failed to converge. Taking the best point seen so far:\n', (best_val, best_MLE))
-            # print(
-
-            hess = nd.Hessian(minimize_me)(best_MLE)
-            det_inv_hess = 1 / np.linalg.det(hess)
-
-            if det_inv_hess > 0:
-                ln_model_evidence = (
-                    (d / 2) * log(2 * pi)
-                    + 1 / 2 * log(det_inv_hess)
-                    - fnc(best_MLE))
                 success = True
-            else:
-                success = False
+                break
 
-        elif i < tries - 1:
-            # print('Retrying because not success or not the lowest seen')
-            retry(i, min)
-
-    # Check convergence state
-    # if not min.success:
-    #     logging.warning(f'MLE search procedure with link = {link} failed to converge')
-    # # Log the parameter values to a file
-    # convergence_errors_file = 'convergence errors.dat'
-    # lock_file = convergence_errors_file + '.lock'
-    #
-    # lock = FileLock(lock_file, timeout=1)
-    # with lock:
-    #
-    #     # str = f'Time: {datetime.now}, parameters: D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}, M={M}, dt={dt}.\n'
-    #     str = f'Time: {datetime.now}, parameters: {true_parameters}.\n'
-    #
-    #     open(convergence_errors_file, 'a').write(str)
-
-    # # Double check if a local optimum was found
-    # grad = nd.Gradient(minimize_me)(exp(min.x))
-    # if not np.all(abs(grad) <= grad_tol):
-    #     logging.warn(
-    #         'The output gradient after optimization is too high. The algorithm might not have converged! Gradient: ' + repr(grad))
+    # Restore the parameters from log
+    if bl_log_parameter_search:
+        MLE = {names[i]: exp(min.x[i]) for i in range(len(min.x))}
+    else:
+        MLE = {names[i]: min.x[i] for i in range(len(min.x))}
 
     if success:
-        """Save the MLE guess for further use"""
+        print(
+            f'MLE search with link = {link} converged.\nTaking the best point seen so far:\n', (min.fun, MLE))
+        # Save the MLE guess for further use
         save_MLE_guess(hash_no_trial=hash_no_trial, MLE_guess=MLE,
                        ln_posterior_value=-min.fun, link=link)
+    else:
+        print(
+            f'MLE search procedure with link={link} failed to converge in {tries} tries.')
 
-    # Print some output if verbose
     if verbose:
-        # print('Check gradient at the minimum: ', nd.Gradient(minimize_me)(min.x))
-        # print('MLE found: ', exp(min.x))
-        # print('Prior ln value at MLE: ', ln_prior(**MLE), '\n')
-        print('Full results:\n', min)
-        print('det_inv_hess: ', det_inv_hess)
+        1
+        # print('Full results:\n', min)
+        # print('det_inv_hess: ', det_inv_hess)
 
     return MLE, ln_model_evidence, min, success

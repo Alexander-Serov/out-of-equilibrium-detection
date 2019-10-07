@@ -30,7 +30,7 @@ from likelihood import (estimate_sigma2_matrix,
                         get_sigma2_matrix_func)
 #  Load and plot data of the test result as a function of the link strength
 from plot import (plot_diffusivity_dependence, plot_link_strength_dependence,
-                  plot_periodogram)
+                  plot_localization_dependence, plot_periodogram)
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
 from support import get_rotation_matrix, locally_rotate_a_vector
 
@@ -62,10 +62,15 @@ true_parameters = {name: val for name, val in zip(
 lg_BF_vals = plot_link_strength_dependence(seed=0, verbose=False, recalculate=False, dry_run=False)
 
 # %%
-lg_BF_vals = plot_diffusivity_dependence(seed=0, verbose=False, recalculate=False, dry_run=False)
-
+lg_BF_vals = plot_diffusivity_dependence(seed=0, verbose=False, recalculate=False, dry_run=True)
 
 # %%
+lg_BF_vals = plot_localization_dependence(seed=0, verbose=False, recalculate=False, dry_run=True)
+
+# %%
+np.log(0.01) / np.log(1 - 20658 / 22540)
+3460 / 22540
+np.log(0.01) / np.log(1 - 3460 / 22540)
 1
 # fit_params = {'D1': 0.009556111157819758, 'D2': 0.16340672297424766,
 #               'n1': 5.050123555707306e2, 'n2': 127.64011605246695, 'n12': 23.693359560798886 * 0}

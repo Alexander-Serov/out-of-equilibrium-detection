@@ -18,6 +18,7 @@ from numpy import cos, exp, log, pi, sin, sqrt
 from numpy.linalg import eig, inv
 from scipy import integrate
 from scipy.fftpack import fft
+from scipy.integrate import dblquad, nquad
 from scipy.optimize import minimize, root_scalar
 from scipy.special import erf, gamma, gammaincc, gammaln, logsumexp
 
@@ -636,7 +637,8 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
     # number of random starting points for the MLE search before abandoning
     # Based on 99% chance estimate in a simple binomial model.
-    tries = 2 + 1 if not link else 40 + 1
+    # tries = 2 + 1 if not link else 40 + 1
+    tries = 2 + 1
     tol = 1e-5  # search tolerance
     grad_tol = tol * 10  # gradient check tolerance
     ln_model_evidence = np.nan
@@ -714,13 +716,77 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     else:
         raise RuntimeError(f'Method "{method}" not implemented')
 
-    def retry(i, min):
-        print('Found minimum: ', min.fun, ' at ', to_dict(*min.x))
+    def retry(i, min, ln_ev):
+        print('Found minimum: ', min.fun, 'with ln evidence', ln_ev, ' at ', to_dict(*min.x))
         # print(
         #     f'Retrying with another starting point. Finished try {i+1}/{tries}.\n')
         # print('Full output: ', min)
         # verbose_tries = True
         return
+
+    def calculate_laplace_approximation(min):
+        """
+        The function locally calculates the integral of a given minimum by using a Laplace approximation (approximating the shape of the peak by a non-uniform Gaussian).
+        If the Hessian was calculated by the BFGS method, its values is used, otherwise, it is evaluated through finite differences.
+        """
+        if method is 'BFGS' and np.linalg.det(min.hess_inv) >= 1e-8:
+            # Require that the returned Hessian has really been evaluated
+            hess_inv = min.hess_inv
+            det_inv_hess = np.linalg.det(hess_inv)
+        else:
+            # Otherwise, manually estimate the Hessian
+            hess = nd.Hessian(minimize_me)(min.x)
+            det_inv_hess = 1 / np.linalg.det(hess)
+
+        if det_inv_hess <= 0:
+            # If the Hessian is non-positive, it was not a minimum
+            return np.nan
+
+        # Calcualte evidence
+        # In the following, we subtract minimize_me because `fnc` is the negative log likelihood
+        ln_model_evidence = ((d / 2) * log(2 * pi)
+                             + 1 / 2 * log(det_inv_hess)
+                             - fnc(min.x))
+        return ln_model_evidence
+
+    def calculate_evidence_integral(points=None):
+        """
+        Calculate the evidence integral by numerical integration without Laplace approximation.
+        """
+        if link:
+            return np.nan
+
+        lims_zero = 1e-8
+        infty = 1e7
+        all_integration_limits = {'D1': [lims_zero, infty], 'D2': [lims_zero, infty], 'n1': [
+            lims_zero, infty], 'n2': [lims_zero, infty], 'n12': [0, infty]}
+
+        # Get the scale of the maximum of the posterior to normalize the integrand
+        largest_ln_value = max([-minimize_me(point) for point in points])
+
+        # Filter break points be removing those that are too close, separately along each axis
+        atol_points = 1e-1
+        points = zip(*points)   # combine break points per axis
+        new_points = []
+        for points_1d in points:
+            points_1d = np.sort(points_1d)
+            new_points_1d = [points_1d[0]]
+            for p in points_1d[1:]:
+                if p - new_points_1d[-1] >= atol_points:
+                    new_points_1d.append(p)
+            new_points.append(new_points_1d)
+
+        print('Break points for direct integration:', new_points)
+
+        def integrand(*args):
+            """Renormalize the function before integration"""
+            return exp(-minimize_me(args) - largest_ln_value)
+
+        opts = [{'points': el, 'epsabs': 1e-1, 'epsrel': 1e-1} for el in new_points]
+        integration_limits = [all_integration_limits[name] for name in names]
+        res = nquad(integrand, ranges=integration_limits, opts=opts)
+
+        return log(res[0]) + largest_ln_value
 
     verbose_tries = True
     mins = []
@@ -742,7 +808,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         elif i == tries - 1:
             # On the last try, retry from the best guess so far
             mins.sort(key=itemgetter(0))
-            start_point = to_dict(*mins[0][1].x)
+            start_point = to_dict(*mins[0][2].x)
             print('On the last try, retry from the best guess so far:\n', start_point)
 
             # Also estimate how many of the best values are close
@@ -776,41 +842,35 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
         # Store the found point if the hessian is not diagonal (because it's not a new point then)
         # if np.abs(np.linalg.det(min.hess_inv)) >= 1e-8:
-        mins.append((min.fun, min))
-        retry(i, min)
+        ln_evidence = calculate_laplace_approximation(min)
+        element = (min.fun, ln_evidence, min)
+        mins.append(element)
+        retry(i, min, ln_evidence)
 
     # Sort the results
     mins.sort(key=itemgetter(0))
 
-    print(f'\nFound the following minimi in {tries} tries:\n', [min[0] for min in mins])
+    # Calculate evidence integral
+    points = [el[2].x for el in mins]
+    ln_true_evidence = calculate_evidence_integral(points)
+    print('Direct numerical evaluation of the evidence integral: ', ln_true_evidence)
+
+    print(f'\nFound the following (minimi, ln_evidence) in {tries} tries:\n', [
+          (min[0], min[1]) for min in mins])
 
     # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
     success = False
-    for _, min in mins:
+    for _, _, min in mins:
         if min.success or (not min.success and min.status == 2):
             # Estimate the Hessian in the MLE
-            if bl_log_parameter_search:
-                hess = nd.Hessian(minimize_me)(exp(min.x))
-                det_inv_hess = 1 / np.linalg.det(hess)
-            elif method is 'BFGS' and np.linalg.det(min.hess_inv) >= 1e-8:
-                # Require that the returned Hessian has really been evaluated
-                hess_inv = min.hess_inv
-                det_inv_hess = np.linalg.det(hess_inv)
-            else:
-                # Otherwise, manually estimate the Hessian
-                hess = nd.Hessian(minimize_me)(min.x)
-                det_inv_hess = 1 / np.linalg.det(hess)
+            ln_model_evidence = calculate_laplace_approximation(min)
 
-            if det_inv_hess <= 0:
-                # Make sure the hessain makes sense (is a minimum)
-                continue
+            # if ln_model_evidence <= 0:
+            #     # If this was not a minimum
+            #     continue
 
-            # Calcualte model evidence
-            # In the following, we subtract minimize_me because it is the negative log likelihood
-            ln_model_evidence = ((d / 2) * log(2 * pi)
-                                 + 1 / 2 * log(det_inv_hess)
-                                 - fnc(min.x))
             if not np.isnan(ln_model_evidence):
+                # If this was not a minimum, the returned value will be nan.
                 success = True
                 break
 

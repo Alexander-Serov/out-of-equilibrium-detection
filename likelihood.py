@@ -703,14 +703,16 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     if verbose:
         print('Started MLE search')
 
-    if method is 'BFGS':
+    # print(method, type(method), method == 'Nelder-Mead', method is 'Nelder-Mead')
+    # print(method, type(method), method == 'BFGS', method is 'BFGS')
+
+    if method == 'BFGS':
         options = {'disp': verbose, 'gtol': tol}
 
-    elif method is 'Nelder-Mead':
+    elif method == 'Nelder-Mead':
         options = {'disp': verbose, 'maxiter': d * 1000}
     else:
-        # options = {}
-        raise RuntimeError('Method not implemented')
+        raise RuntimeError(f'Method "{method}" not implemented')
 
     def retry(i, min):
         print('Found minimum: ', min.fun, ' at ', to_dict(*min.x))

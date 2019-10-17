@@ -10,8 +10,12 @@ import pickle
 import socket
 import time
 
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 from filelock import FileLock
+from scipy.optimize import root, root_scalar
+from scipy.special import gamma
 
 # from calculate import max_abs_lg_B_per_M
 
@@ -153,7 +157,7 @@ class stopwatch:
         mins = int(np.floor(delta / 60))
         secs = delta - 60 * mins
         if self.verbose:
-            print(f'\n{self.name} completed in {mins} mins {round(secs, 1)} s.\n')
+            print(f'\n{self.name} completed in {mins} mins {round(secs, 0)} s.\n')
 
 
 def stopwatch_dec(func):
@@ -186,6 +190,7 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
     Unless force_update, update the guess only if the found maximum is higher
 
     Parameters:
+    hash_no_trial - set to None if do not want to save
     ln_posterior_value - natural logarithm of the postive-sign posterior
     link {bool} - whether the system has a link
     """
@@ -193,6 +198,9 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
     filename = MLE_guess_file
     lock_file = filename + '.lock'
     lock = FileLock(lock_file, timeout=1)
+
+    if hash_no_trial is None:
+        return False
 
     hash_no_trial += f'{link:b}'
 
@@ -266,6 +274,12 @@ def load_MLE_guess(hash_no_trial, link):
     """
     MLE_guess = np.nan
     old_ln_value = np.nan
+
+    if hash_no_trial is None:
+        success = False
+        logging.warning('Empty hash provided. MLE guesses will not be loaded or saved')
+        return MLE_guess, old_ln_value, success
+
     hash_no_trial += f'{link:b}'
 
     MLE_guesses, success = load_all_MLE_guesses()
@@ -273,6 +287,9 @@ def load_MLE_guess(hash_no_trial, link):
     if success:
         if hash_no_trial in MLE_guesses.keys():
             MLE_guess, old_ln_value = MLE_guesses[hash_no_trial]
+            check_positive = np.all([MLE_guess[key] >= 0 for key in MLE_guess.keys()])
+            success = check_positive
+
         else:
             success = False
 
@@ -305,3 +322,106 @@ def save_number_of_close_values(link, val, tries, frac):
         logging.warn('Unable to the number of close values')
 
     return
+
+
+def set_figure_size(num, rows, page_width_frac, height_factor=1.0, clear=True):
+    pagewidth_in = 6.85
+    font_size = 8
+    dpi = 100
+
+    figsize = np.asarray([1.0, rows *
+                          height_factor]) * page_width_frac * pagewidth_in  # in inches
+
+    # Set default font size
+    matplotlib.rcParams.update({'font.size': font_size})
+
+    # Enable LaTeX and set font to Helvetica
+    plt.rc('text', usetex=True)
+    plt.rcParams['text.latex.preamble'] = [
+        r'\usepackage{tgheros}',    # helvetica font
+        r'\usepackage{sansmath}',   # math-font matching  helvetica
+        r'\sansmath'                # actually tell tex to use it!
+        r'\usepackage{siunitx}',    # micro symbols
+        r'\sisetup{detect-all}',    # force siunitx to use the fonts
+    ]
+    # Enforce TrueType fonts for easier editing later on
+    # matplotlib.rcParams['pdf.fonttype'] = 42
+    # matplotlib.rcParams['ps.fonttype'] = 42
+
+    # Create and return figure handle
+    fig = plt.figure(num, clear=clear)
+
+    # Set figure size and dpi
+    fig.set_dpi(dpi)
+    fig.set_figwidth(figsize[0])
+    fig.set_figheight(figsize[1])
+
+    # fig.tight_layout()
+
+    # Return figure handle
+    return (fig, figsize)
+
+
+def find_inverse_gamma_parameters(interval, tau):
+    """
+    The function finds the parameters alpha and beta of the inverse gamma function such that at the borders of the given interval, the pdf is corresponds to tau \in [0,1] of the maximum
+    """
+    if tau < 0 or tau > 1:
+        raise RuntimeError('Wrong tau value supplied')
+
+    def eqn(alpha, beta, x):
+        return -(alpha + 1) * np.log(x * (alpha + 1) / beta) - beta / x + (alpha + 1) - np.log(tau)
+
+    def solve_me(args):
+        # print(args)
+        alpha, beta = args
+        return [eqn(alpha, beta, interval[0]), eqn(alpha, beta, interval[1])]
+
+    # Root search
+    guess = [0.5, np.mean(interval)]
+    # print(guess)
+    sol = root(solve_me, guess)
+    print(sol)
+
+
+def find_inverse_gamma_function_scale(left, tau, alpha):
+    """
+    The function finds the value of beta that makes the given inverse gamma function with the the given alpha satisfy the condition that at a point x = left to the left of the mode, the function value is tau * max_value.
+    """
+    if tau < 0 or tau > 1:
+        raise RuntimeError('Wrong tau value supplied')
+
+    def eqn(alpha, beta, x):
+        return -(alpha + 1) * np.log(x * (alpha + 1) / beta) - beta / x + (alpha + 1) - np.log(tau)
+
+    def solve_me(beta):
+        # print(args)
+        return eqn(alpha, beta, left)
+
+    # Root search
+    guess = 2 * left
+    # print(guess)
+    sol = root_scalar(solve_me, x0=guess, bracket=[left, 1e10])
+    if sol.converged:
+        return sol.root
+    else:
+        return np.nan
+
+
+# %% Test
+if __name__ == "__main__":
+    find_inverse_gamma_function_scale(0.01, 0.01, 2)
+
+    def test(beta=0.11683992564378747, alpha=2, x=0.01):
+        return beta**alpha / gamma(alpha) * x**(-alpha - 1) * np.exp(-beta / x)
+
+    test(x=0.01)
+    test(x=0.11683992564378747 / 3)
+
+    test(x=0.01) / test(x=0.11683992564378747 / (2 + 1))
+
+    # test(0.0889, 0.5, 0.1)
+    # test(0.0889, 0.5, 10)
+    # test(0.0889, 0.5, 0.5 / 1.0889)
+    #
+    # test(0.0889, 0.5, 10) / test(0.0889, 0.5, 0.5 / 1.0889)

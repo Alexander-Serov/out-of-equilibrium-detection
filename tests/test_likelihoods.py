@@ -11,7 +11,9 @@ from likelihood import (get_ln_likelihood_func_2_particles_x_link, get_MLE,
 class tests(unittest.TestCase):
 
     def test_likelihood_one_point(self):
-        """Check if likelihoods are correctly calculated for different parameter values"""
+        """
+        Check if likelihoods are correctly calculated for different parameter values
+        """
         k = 1
         D1 = 1
         D2 = 3
@@ -94,7 +96,9 @@ class tests(unittest.TestCase):
                         f"Likelihood test failed for 2 points: {ln_estimate:.6g} != {true_ln_estimate:.6g}")
 
     def test_MLE_search(self):
-        """Several values of the periodogram"""
+        """
+        Test if the MLE is found correctly for several values of the periodogram
+        """
         M = 999
         dt = 0.3
         alpha = 0
@@ -103,16 +107,19 @@ class tests(unittest.TestCase):
         test_point = (1, 2, 1, 1, 1)    # D1, D2, n1, n2, n12
 
         """Test 1"""
-        zs = [dt**2, dt**2 * 0.95]
+        zs_x = [dt**2, dt**2 * 0.95]
         ks = [400, 402]
 
-        # MLE = get_MLE(ks=ks, zs=zs, M=M, dt=dt, alpha=alpha)
+        true_MLE = 1
+        true_fun = 1
+
+        MLE = get_MLE(ks=ks, zs_x=zs_x, M=M, dt=dt, link=True, hash_no_trial=None)
         # # ln_estimate = ln_lklh(*test_point)
         # true_MLE = 0.7514517168
         #
         # # self.assertTrue(np.isclose(MLE, true_MLE, atol=atol),
         # #                 f"Likelihood test failed for 2 points: {MLE:.6g} != {true_MLE:.6g}")
-        # print(MLE)
+        print(MLE)
         # print(true_MLE)
     # #
     # #     # """Test 2"""
@@ -223,7 +230,9 @@ class tests(unittest.TestCase):
                         f"Mean test failed for 1 free particle: {mean_periodogram:.6g} != {true_value:.6g}")
 
     def test_max_search(self):
-        """Test if the numerical search can find the correct posterior maximum"""
+        """
+        Test if the numerical search can find the correct posterior maximum
+        """
 
         from likelihood import get_MLE
 
@@ -238,7 +247,7 @@ class tests(unittest.TestCase):
 
         start_point = {'D1': 1, 'n1': 1}
 
-        MLE_free, ln_evidence_free, max_free, ln_model_evidence_direct = get_MLE(
-            ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, M=M, dt=dt, link=False, start_point=start_point)
-
-        print(MLE_free)
+        # MLE_free, ln_evidence_free, max_free, ln_model_evidence_direct = get_MLE(
+        #     ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, M=M, dt=dt, link=False, hash_no_trial=None)
+        #
+        # print(MLE_free)

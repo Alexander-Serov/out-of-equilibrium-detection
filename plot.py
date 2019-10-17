@@ -13,11 +13,15 @@ from calculate import (calculate_bayes_factor,
                        simulate_and_calculate_Bayes_factor_terminal)
 from constants import color_sequence
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
-from support import get_cluster_args_string
+from support import get_cluster_args_string, set_figure_size
 
 # Plot parameters
 alpha_shade = 0.3
 confidence_level = 0.95
+height_factor = 0.8
+page_width_frac = 0.5
+rows = 1
+lw_theory = 1
 
 
 def plot_periodogram(modes_avg, PX_norm_avg, PY_norm_avg, D1, D2, M):
@@ -57,17 +61,18 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
+    trials = 5  # 50  # 1000
     D2 = 0.4  # um^2/s
     D1 = 5 * D2   # um^2/s; 0.4
-    n1 = 2e3
-    n2 = 2e3
+    n1 = 0.1
+    n2 = 0.1
     # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
     Ms = [100, 200]  # required number of points in a trajectory; 100
     # N = 101
 
     dt = 0.05  # s 0.3
     gamma = 1e-8    # viscous drag, in kg/s
-    L = 0.5
+    L = 20
     angle = 0
     # trial = 0   # the trial number
     # recalculate = False
@@ -76,9 +81,9 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
     # color = [0.1008,    0.4407,    0.7238]
 
     # Parameters varying in the plot
-    trials = 50  # 1000
-    n12_range = [1e0, 1e7]
-    n12_points = 100
+
+    n12_range = [1e-3, 10]
+    n12_points = 40
     n12s = np.logspace(log10(n12_range[0]), log10(n12_range[1]), num=n12_points)
 
     # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
@@ -143,7 +148,9 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
         # print('CIs: ', np.log10(CIs))
 
     # %% Actual plotting
-    fig = plt.figure(num=3, clear=True)
+    # fig = plt.figure(num=3, clear=True)
+    fig = set_figure_size(num=3, rows=rows, page_width_frac=page_width_frac,
+                          height_factor=height_factor)
 
     # Confidence intervals
     # ax = plt.gca()
@@ -162,21 +169,21 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
 
     # Significance levels
     xlims = plt.xlim()
-    plt.plot(xlims, [-1] * 2, '--', color='k')
-    plt.plot(xlims, [1] * 2, '--', color='k')
+    plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+    plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
 
     plt.xscale('log')
     plt.xlabel('$n_{12}/n_1$')
     plt.ylabel('Median $\mathrm{lg}(B)$')
     plt.title(
-        f'trials={trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1e}, n2={n1:.1e}, dt={dt}, L={L}')
+        f'trials={trials}, D1={D1:.2f}, D2={D2:.2f},\nn1={n1:.2f}, n2={n1:.2f}, dt={dt}, L={L}')
 
-    plt.legend(loc='best')
+    plt.legend(loc='upper left')
     plt.tight_layout()
     plt.show()
 
     fig_folder = 'figures'
-    figname = f'link_dependence'
+    figname = f'link_dependence-weak'
     figpath = os.path.join(fig_folder, figname)
     plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
     plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
@@ -194,11 +201,12 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
+    trials = 5  # 1000
     D2 = 0.4  # um^2/s
     # D1 = 5 * D2   # um^2/s; 0.4
-    n1 = 2e3
-    n2 = 2e3
-    n12 = n1 * 10
+    n1 = 0.1
+    n2 = 0.1
+    n12 = n1
     # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
     Ms = [100, 200]  # required number of points in a trajectory; 100
     # N = 101
@@ -214,10 +222,10 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     # color = [0.1008,    0.4407,    0.7238]
 
     # Parameters varying in the plot
-    trials = 50  # 1000
-    D1_ratio_range = np.array([1e-2, 1e2])
-    D1_range = D1_ratio_range * D2
-    D1_points = 50
+
+    # D1_ratio_range = np.array([1e-2, 1e2])
+    D1_range = [0.01, 5]  # D1_ratio_range * D2
+    D1_points = 40
     D1s = np.logspace(log10(D1_range[0]), log10(D1_range[1]), num=D1_points)
 
     # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
@@ -269,7 +277,8 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
         # print('CIs: ', np.log10(CIs))
 
     # %% Actual plotting
-    fig = plt.figure(num=3, clear=True)
+    fig = set_figure_size(num=3, rows=rows, page_width_frac=page_width_frac,
+                          height_factor=height_factor)
 
     # Confidence intervals
     # ax = plt.gca()
@@ -288,8 +297,8 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
 
     # Significance levels
     xlims = plt.xlim()
-    plt.plot(xlims, [-1] * 2, '--', color='k')
-    plt.plot(xlims, [1] * 2, '--', color='k')
+    plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+    plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
 
     plt.xscale('log')
     plt.xlabel('$D_1/D_2$')
@@ -310,7 +319,7 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     return lg_BF_vals
 
 
-def plot_localization_dependence(seed=None, verbose=False, recalculate=False, dry_run=False):
+def plot_localization_dependence(seed=None, particle=1, verbose=False, recalculate=False, dry_run=False):
     """
     The function loads data for the specified parameters and makes the plot.
 
@@ -320,40 +329,42 @@ def plot_localization_dependence(seed=None, verbose=False, recalculate=False, dr
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
+    trials = 5  # 1000
     D2 = 0.4  # um^2/s
     D1 = 5 * D2   # um^2/s; 0.4
     # n1 = 2e3
-    n2 = 2e3
-    n12 = n2 * 10
     # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
     Ms = [100, 200]  # required number of points in a trajectory; 100
     # N = 101
 
     dt = 0.05  # s 0.3
     gamma = 1e-8    # viscous drag, in kg/s
-    L = 0.5
+    L = 20
     angle = 0
     # trial = 0   # the trial number
     # recalculate = False
 
+    n_range = np.array([1e-2, 10])
+    n_other = 0.1
+    n12 = 0.1
+    n_points = 40  # 50
+    if particle == 1:
+        n2 = n_other
+        # n_range = n_ratio_range * n_other
+        n1s = np.logspace(log10(n_range[0]), log10(n_range[1]), num=n_points)
+    elif particle == 2:
+        n1 = n_other
+        # n_range = n_ratio_range * n_other
+        n2s = np.logspace(log10(n_range[0]), log10(n_range[1]), num=n_points)
+
     arguments_file = 'arguments.dat'
-    # color = [0.1008,    0.4407,    0.7238]
-
-    # Parameters varying in the plot
-    trials = 20  # 1000
-    n1_ratio_range = np.array([1e-2, 1e2])
-    n1_range = n1_ratio_range * n2
-    n1_points = 50  # 50
-    n1s = np.logspace(log10(n1_range[0]), log10(n1_range[1]), num=n1_points)
-
-    # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
 
     if dry_run:
         if os.path.exists(arguments_file):
             os.unlink(arguments_file)
         file = open(arguments_file, 'a')
 
-    lg_BF_vals = np.full([len(Ms), n1_points, trials], np.nan)
+    lg_BF_vals = np.full([len(Ms), n_points, trials], np.nan)
 
     for trial in trange(trials, desc='Loading/calculating trial data'):
         # if seed is not None:
@@ -362,16 +373,30 @@ def plot_localization_dependence(seed=None, verbose=False, recalculate=False, dr
         #     trial_seed = None
         for ind_M, M in enumerate(Ms):
             T = dt * M  # s
-            for ind_n1, n1 in enumerate(n1s):
-                args_string = get_cluster_args_string(
-                    D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, T=T, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate=recalculate)
-                if dry_run:
-                    file.write(args_string)
 
-                else:
-                    # print(args_string)
-                    lg_BF_vals[ind_M, ind_n1, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
-                        args_string)
+            # OPTIMIZE:
+            if particle == 1:
+                for ind_n, n1 in enumerate(n1s):
+                    args_string = get_cluster_args_string(
+                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, T=T, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate=recalculate)
+                    if dry_run:
+                        file.write(args_string)
+
+                    else:
+                        # print(args_string)
+                        lg_BF_vals[ind_M, ind_n, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
+                            args_string)
+            else:
+                for ind_n, n2 in enumerate(n2s):
+                    args_string = get_cluster_args_string(
+                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, T=T, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate=recalculate)
+                    if dry_run:
+                        file.write(args_string)
+
+                    else:
+                        # print(args_string)
+                        lg_BF_vals[ind_M, ind_n, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
+                            args_string)
 
     if dry_run:
         file.close()
@@ -380,48 +405,45 @@ def plot_localization_dependence(seed=None, verbose=False, recalculate=False, dr
             print('Warning: verbose was active')
         return np.nan
 
-    # print(lg_BF_vals)
-
     # %% Calculating means and CI
     median_lg_BFs = np.nanmedian(lg_BF_vals, axis=2)
-    # print('mean', median_lg_BFs)
-
-    # BF_vals = 10**lg_BF_vals
 
     if trials > 1:
-        CIs = np.full([len(Ms), n1_points, 2], np.nan)
+        CIs = np.full([len(Ms), n_points, 2], np.nan)
         CIs[:, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=2)  # 0.025
         CIs[:, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2, axis=2)  # 0.975
         # print('CIs: ', np.log10(CIs))
 
     # %% Actual plotting
-    fig = plt.figure(num=3, clear=True)
+    fig = set_figure_size(num=3, rows=rows, page_width_frac=page_width_frac,
+                          height_factor=height_factor)
 
     # Confidence intervals
     # ax = plt.gca()
-    xs = n1s / n2
+    if particle == 1:
+        xs = n1s / n2
+    else:
+        xs = n2s / n1
     for ind_M in range(len(Ms)):
         color = color_sequence[ind_M]
         if trials > 1:
 
             plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
                              alpha=alpha_shade, color=color)
-            # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
-            # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
 
         # Mean
         plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}')
 
     # Significance levels
     xlims = plt.xlim()
-    plt.plot(xlims, [-1] * 2, '--', color='k')
-    plt.plot(xlims, [1] * 2, '--', color='k')
+    plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+    plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
 
     plt.xscale('log')
-    plt.xlabel('$n_1/n_2$')
+    plt.xlabel('$n_1/n_2$' if particle == 1 else '$n_2/n_1$')
     plt.ylabel('Median $\mathrm{lg}(B)$')
     plt.title(
-        f'trials={trials}, D1={D1:.2f}, D2={D2:.2f}, n12/n2={n12/n2:.1e}, n2={n1:.1e}, dt={dt}, L={L}')
+        f'trials={trials}, D1={D1:.2f}, D2={D2:.2f}, n12={n12:.1e}, dt={dt}, L={L}')
 
     plt.legend(loc='best')
     plt.tight_layout()

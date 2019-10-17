@@ -5,6 +5,7 @@ The part that concerns periodogram likelihoods calculation and fitting parameter
 
 import argparse
 
+import matplotlib.pyplot as plt
 import numpy as np
 from numpy import log
 from scipy.fftpack import fft
@@ -12,7 +13,7 @@ from scipy.fftpack import fft
 from likelihood import get_MLE
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
 from support import (delete_data, hash_from_dictionary, load_data, save_data,
-                     stopwatch_dec)
+                     stopwatch, stopwatch_dec)
 
 max_abs_lg_B_per_M = 2
 
@@ -101,8 +102,9 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
 
     # # %% MLE and evidence for the model without a link
     print('\nCalculating no-link evidence...')
-    MLE_free, ln_evidence_free, max_free, success_free = get_MLE(
-        ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=False, verbose=verbose)
+    with stopwatch('No-link evidence calculation'):
+        MLE_free, ln_evidence_free, max_free, success_free = get_MLE(
+            ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=False, verbose=verbose)
 
     if success_free:
         print('Done!', ln_evidence_free)
@@ -112,8 +114,9 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
     # %% Infer the MLE for the model with link
     if success_free:
         print('\nCalculating evidence with link...')
-        MLE_link, ln_evidence_with_link, max_link, success_link = get_MLE(
-            ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=True, verbose=verbose)  # , start_point=true_parameters)
+        with stopwatch('Evidence calculation with link'):
+            MLE_link, ln_evidence_with_link, max_link, success_link = get_MLE(
+                ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=True, verbose=verbose)  # , start_point=true_parameters)
         if success_link:
             print('Done!', ln_evidence_with_link)
         else:
@@ -126,7 +129,7 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
     # Bayes factor
     lg_bayes_factor = (ln_evidence_with_link - ln_evidence_free) / log(10)
     # print('ln evidence with and without link', ln_evidence_with_link, ln_evidence_free)
-    print('lg Bayes factor for the presence of the link', lg_bayes_factor)
+    print('lg Bayes factor for the presence of the link ', lg_bayes_factor)
 
     # Save data to disk
     dict_data['lg_B'] = lg_bayes_factor
@@ -166,12 +169,15 @@ def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, gamma, T, dt, angle
     true_parameters = {name: val for name, val in zip(
         ('D1 D2 n1 n2 n12 gamma T dt angle L trial M'.split()),
         (D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M))}
+    lg_BF_val, ln_evidence_with_link, ln_evidence_free = [np.nan] * 3
     # success = False
     tries = 4
 
     for tr in range(tries):
         t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
             true_parameters=true_parameters, plot=False, save_figure=False, recalculate=recalculate, seed=seed)
+        # plt.show()
+        # break
 
         # print('true ', true_parameters)
         # Load the Bayes factor

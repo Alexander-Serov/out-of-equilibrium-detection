@@ -1,0 +1,4 @@
+Without link: 20658/22540. Probability (success) estimate: 0.9165. Hence min. number of tries in a binomial model for 99% success: N >= ln(0.01)/ln(1-0.9165) = 1.85, so we'll take 2
+
+With the link: the numbers are low. I may need to recalculate with a higher tries number. But for the moment:
+3460/22540. p = 0.1535. Then the min. number of tries would be: 27.6 and it is most likely underestimated. I will need to re-evaluate it. For the moment, I'll set N=40.

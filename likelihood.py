@@ -19,15 +19,15 @@ from numpy.linalg import eig, inv
 from scipy import integrate
 from scipy.fftpack import fft
 from scipy.integrate import dblquad, nquad
-from scipy.optimize import minimize, root_scalar
-from scipy.special import erf, gamma, gammaincc, gammaln, logsumexp
+from scipy.optimize import minimize, root, root_scalar
+from scipy.special import erf, gamma, gammainc, gammaincc, gammaln, logsumexp
 
 # from plot import plot_periodogram
 from support import (delete_data, hash_from_dictionary, load_data,
                      load_MLE_guess, save_data, save_MLE_guess,
-                     save_number_of_close_values)
+                     save_number_of_close_values, stopwatch)
 
-ln_infty = - 20 * log(10)
+ln_neg_infty = - 1000 * log(10)
 
 # used to evaluate how many points after optimization are similar on the average
 # prior_sampling_statistics_file = 'statistics.dat'
@@ -324,7 +324,7 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
     """
 
     if np.any(np.array((D1, D2, n1, n2, n12)) < 0):
-        return ln_infty
+        return ln_neg_infty
 
     # Defined the pdf function for a sum of chi-squared
     def ln_pdf_chi_squared_sum(z, sigma2s):
@@ -532,39 +532,75 @@ def get_ln_prior_func():
 
     Also provide a sampler to sample from the prior.
     """
+    # D0 = 0.5  # um^2/s, expected diffusivity scale
+    #
+    # # Inverse-gamma
+    # a = 3 / 2     # no units, shape. Corresponds to 2 jumps. Must be >1 for the mean
+    # beta = D0 * (a - 1)  # um^2/s, so that the mean is D0
 
-    beta = 0.5  # um^2/s
-    a = 0.5     # no units
+    # Parameters of a log-normal distribution based on an interval
+    # Require that the decrease on the borders of the interval as compared to the maximum is of the order of tau
+    D_interval = [0.01, 5]
+    tau = 1 / 100
+    mu_D = np.mean(log(D_interval))
+    sigma2_D = -(log(D_interval[1]) - mu_D)**2 / 2 / log(tau)
+
+    # # Gamma
+    # a = 2     # no units
+
+    # theta = D0 / (a - 1)
 
     def ln_D_prior(D):
-        """D_i prior"""
-        return a * log(beta) - gammaln(a) - (a + 1) * log(D) - beta / D
+        """
+        Same prior for D1 and D2.
+        Just a Gamma distribution with specific mode and variances.
+        """
+        # return -gammaln(a) - a * log(theta) + (a - 1) * log(D) - D / theta # gamma distribution
+        # # this is inverse-Gamma distribution
+        # return a * log(beta) - gammaln(a) - (a + 1) * log(D) - beta / D
+        # Log-normal distribution defining an interval
+        return -log(D) - 1 / 2 * log(2 * pi * sigma2_D) - (log(D) - mu_D)**2 / 2 / sigma2_D
 
     def cdf_D_prior(D):
         if D > 0:
-            return gammaincc(a, beta / D)
+            # return gammainc(a, D / theta) # gamma
+            # return gammaincc(a, beta / D)  # inverse-gamma
+            # log-normal
+            return 1 / 2 * (1 + erf((log(D) - mu_D) / np.sqrt(2 * sigma2_D)))
         else:
             return 0
 
-    n0 = 10**3      # s^{-1}, spring constant prior scale
-    sigma_n = log(10) / 2
-    mu_n = log(n0) + sigma_n**2
+    # n0 = 0.1      # s^{-1}, spring constant prior scale
+    # alpha = 3 / 2
+    # beta = n0 * (alpha - 1)
+
+    n_interval = [0.01, 10]
+    tau = 1 / 100
+    mu_n = np.mean(log(n_interval))
+    sigma2_n = -(log(n_interval[1]) - mu_n)**2 / 2 / log(tau)
 
     def ln_n_prior(n):
         """
-        n_i prior
-
-        This prior is on log values of n allowing very wide distributions. I need to make them smaller, so that n1 = 1e-20 be not accessible..
-
-        Currently it is a Gaussian distribution for log(n), which does not prohibit 0. I must change it.
-
+        An inverse-gamma distribution to have long tails and in theory allow stronger localization.
         """
-        return -log(n) - 1 / 2 * log(2 * pi * sigma_n**2) - (log(n) - mu_n)**2 / 2 / sigma_n**2
+        return -log(n) - 1 / 2 * log(2 * pi * sigma2_n) - (log(n) - mu_n)**2 / 2 / sigma2_n
+        # inverse gamma distribution
+        return a * log(beta) - gammaln(a) - (a + 1) * log(n) - beta / n
 
     def cdf_n_prior(n):
-        return 1 / 2 * (1 + erf((log(n) - mu_n) / np.sqrt(2) / sigma_n))
+        # log-normal
+        return 1 / 2 * (1 + erf((log(n) - mu_n) / np.sqrt(2 * sigma2_n)))
 
+        # if n > 0:
+        #     # return gammainc(a, D / theta) # gamma
+        #     return gammaincc(a, beta / n)  # inverse-gamma
+        # else:
+        #     return 0
+
+    n12_interval = [0, 10]
+    tau = 1 / 100
     a = 1
+    lam = n12_interval[1] / (tau**(-1 / (a + 1)) - 1)
 
     def ln_n_link_prior(n):
         """
@@ -572,23 +608,24 @@ def get_ln_prior_func():
         A Lomax distribution.
         """
 
-        return log(a) - log(n0) - (a + 1) * log(1 + n / n0)
+        return log(a) - log(lam) - (a + 1) * log(1 + n / lam)
 
     def cdf_n_link_prior(n):
         """CDF for the prior"""
-        return 1 - (1 + n / n0)**(-a)
+        return 1 - (1 + n / lam)**(-a)
 
     # Assemble the prior function
     def ln_prior(D1, n1, D2=None, n2=None, n12=None):
         ln_result = 0
         if np.any(np.array([D1, n1]) <= 0):
-            return ln_infty
+            return ln_neg_infty
         ln_result += ln_D_prior(D1)
         ln_result += ln_n_prior(n1)
+        # print('D prior', D1, ln_D_prior(D1))
 
         if all(v is not None for v in (D2, n2, n12)):
             if np.any(np.array((D2, n2)) <= 0) or n12 < 0:
-                return ln_infty
+                return ln_neg_infty
             ln_result += ln_D_prior(D2)
             ln_result += ln_n_prior(n2)
             ln_result += ln_n_link_prior(n12)
@@ -609,7 +646,7 @@ def get_ln_prior_func():
             names = ('D1', 'n1')
         else:
             names = ('D1', 'D2', 'n1', 'n2', 'n12')
-            cdfs = [cdf_D_prior, cdf_n_prior, cdf_D_prior, cdf_n_prior, cdf_n_link_prior]
+            cdfs = [cdf_D_prior, cdf_D_prior, cdf_n_prior, cdf_n_prior, cdf_n_link_prior]
 
         for i, (cdf, name) in enumerate(zip(cdfs, names)):
             if name is 'n12':
@@ -632,13 +669,14 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
     Input:
         link, bool: whether a link between 2 particles should be considered in the likelihood
-        method: 'BFGS'. 'Nelder-Mead' is not yet implemented.
+        method: {'BFGS', 'Nelder-Mead'}
     """
 
     # number of random starting points for the MLE search before abandoning
     # Based on 99% chance estimate in a simple binomial model.
-    # tries = 2 + 1 if not link else 40 + 1
-    tries = 2 + 1
+    tries = 2 + 1 if not link else 40 + 1
+    # tries = 2 + 1 if not link else 10 + 1
+    # tries = 2 + 1
     tol = 1e-5  # search tolerance
     grad_tol = tol * 10  # gradient check tolerance
     ln_model_evidence = np.nan
@@ -679,6 +717,10 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     # If not start point provided, sample a point from the prior
     if not start_point:
         start_point = start_point_est
+
+    # Sample points from the prior for a test
+    smpl = [sample_from_the_prior(link)['n1'] for i in range(1000)]
+    # print('prior n1 median', np.median(smpl))
 
     # Define two functions to minimize
 
@@ -752,9 +794,11 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     def calculate_evidence_integral(points=None):
         """
         Calculate the evidence integral by numerical integration without Laplace approximation.
+        Use the found MLE as a single breakpoint in the integration for the link model. Currently deactivated.
         """
         if link:
             return np.nan
+        points_in = points.copy()
 
         lims_zero = 1e-8
         infty = 1e7
@@ -764,8 +808,13 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         # Get the scale of the maximum of the posterior to normalize the integrand
         largest_ln_value = max([-minimize_me(point) for point in points])
 
+        # If fitting the link model, use only 1 breakpoint - the MLE
+        # Else use all break points
+        if link:
+            points = sorted(points_in, key=lambda x: -minimize_me(x))[-1:]
+
         # Filter break points be removing those that are too close, separately along each axis
-        atol_points = 1e-1
+        atol_points = 1e0
         points = zip(*points)   # combine break points per axis
         new_points = []
         for points_1d in points:
@@ -852,27 +901,31 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
     # Calculate evidence integral
     points = [el[2].x for el in mins]
-    ln_true_evidence = calculate_evidence_integral(points)
+    with stopwatch('Evidence integration'):
+        ln_true_evidence = calculate_evidence_integral(points)
     print('Direct numerical evaluation of the evidence integral: ', ln_true_evidence)
 
     print(f'\nFound the following (minimi, ln_evidence) in {tries} tries:\n', [
           (min[0], min[1]) for min in mins])
 
-    # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
-    success = False
-    for _, _, min in mins:
-        if min.success or (not min.success and min.status == 2):
-            # Estimate the Hessian in the MLE
-            ln_model_evidence = calculate_laplace_approximation(min)
+    if np.isnan(ln_true_evidence):
+        # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
+        success = False
+        for _, _, min in mins:
+            if min.success or (not min.success and min.status == 2):
+                # Estimate the Hessian in the MLE
+                ln_model_evidence = calculate_laplace_approximation(min)
 
-            # if ln_model_evidence <= 0:
-            #     # If this was not a minimum
-            #     continue
+                # if ln_model_evidence <= 0:
+                #     # If this was not a minimum
+                #     continue
 
-            if not np.isnan(ln_model_evidence):
-                # If this was not a minimum, the returned value will be nan.
-                success = True
-                break
+                if not np.isnan(ln_model_evidence):
+                    # If this was not a minimum, the returned value will be nan.
+                    success = True
+                    break
+    else:
+        ln_model_evidence = ln_true_evidence
 
     # Restore the parameters from log
     if bl_log_parameter_search:
@@ -883,6 +936,13 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     if success:
         print(
             f'MLE search with link = {link} converged.\nTaking the best point seen so far:\n', (min.fun, MLE))
+        try:
+            lam, v = np.linalg.eig(np.linalg.inv(min.hess_inv))
+            # print(f'Eigenvalues and eigenvectors of the Hessian for the MLE:\n', )
+            print('Eigenvalues: ', lam)
+            print('Eigenvectors: ', v)
+        except Exception:
+            pass
         # Save the MLE guess for further use
         save_MLE_guess(hash_no_trial=hash_no_trial, MLE_guess=MLE,
                        ln_posterior_value=-min.fun, link=link)

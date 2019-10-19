@@ -450,7 +450,7 @@ def plot_localization_dependence(seed=None, particle=1, verbose=False, recalcula
     plt.show()
 
     fig_folder = 'figures'
-    figname = f'localization_dependence'
+    figname = f'localization_dependence-weak'
     figpath = os.path.join(fig_folder, figname)
     plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
     plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)

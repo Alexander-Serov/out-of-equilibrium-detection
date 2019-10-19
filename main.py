@@ -56,16 +56,19 @@ true_parameters = {name: val for name, val in zip(
     ('D1 D2 n1 n2 n12 gamma T dt angle L trial M'.split()),
     (D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M))}
 
+# np.log(0.0167)
+# np.log(10)
+# np.log(2 * np.pi)
+# np.log(0.2)
 # print(f'A*dt scale: {np.array([n1, n2, n12]) * dt}')
+# %%
+lg_BF_vals = plot_link_strength_dependence(seed=0, verbose=False, recalculate=True, dry_run=False)
 
 # %%
-lg_BF_vals = plot_link_strength_dependence(seed=0, verbose=False, recalculate=False, dry_run=False)
+lg_BF_vals = plot_diffusivity_dependence(seed=0, verbose=False, recalculate=False, dry_run=False)
 
 # %%
-lg_BF_vals = plot_diffusivity_dependence(seed=0, verbose=False, recalculate=False, dry_run=True)
-
-# %%
-lg_BF_vals = plot_localization_dependence(seed=0, verbose=False, recalculate=False, dry_run=True)
+lg_BF_vals = plot_localization_dependence(seed=0, verbose=False, recalculate=False, dry_run=False)
 
 # %%
 np.log(0.01) / np.log(1 - 20658 / 22540)

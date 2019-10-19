@@ -674,7 +674,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
     # number of random starting points for the MLE search before abandoning
     # Based on 99% chance estimate in a simple binomial model.
-    tries = 2 + 1 if not link else 40 + 1
+    tries = 2 + 1 if not link else 60 + 1
     # tries = 2 + 1 if not link else 10 + 1
     # tries = 2 + 1
     tol = 1e-5  # search tolerance
@@ -771,24 +771,29 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         The function locally calculates the integral of a given minimum by using a Laplace approximation (approximating the shape of the peak by a non-uniform Gaussian).
         If the Hessian was calculated by the BFGS method, its values is used, otherwise, it is evaluated through finite differences.
         """
-        if method is 'BFGS' and np.linalg.det(min.hess_inv) >= 1e-8:
+        if method is 'BFGS' and np.abs(np.linalg.det(min.hess_inv) - 1) >= 1e-8:
             # Require that the returned Hessian has really been evaluated
             hess_inv = min.hess_inv
             det_inv_hess = np.linalg.det(hess_inv)
         else:
             # Otherwise, manually estimate the Hessian
+            print('Manually calculating the Hessian')
             hess = nd.Hessian(minimize_me)(min.x)
             det_inv_hess = 1 / np.linalg.det(hess)
+            hess_inv = np.nan
 
         if det_inv_hess <= 0:
             # If the Hessian is non-positive, it was not a minimum
             return np.nan
 
         # Calcualte evidence
-        # In the following, we subtract minimize_me because `fnc` is the negative log likelihood
+        # Remember `minimize_me` is the negative log likelihood
         ln_model_evidence = ((d / 2) * log(2 * pi)
                              + 1 / 2 * log(det_inv_hess)
-                             - fnc(min.x))
+                             - minimize_me(min.x))
+        print('Laplace approximation of the normalized integral ', exp((d / 2) * log(2 * pi)
+                                                                       + 1 / 2 * log(det_inv_hess)))
+        print(' Hess_inv', det_inv_hess, hess_inv)
         return ln_model_evidence
 
     def calculate_evidence_integral(points=None):
@@ -800,12 +805,12 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
             return np.nan
         points_in = points.copy()
 
-        lims_zero = 1e-8
-        infty = 1e7
-        all_integration_limits = {'D1': [lims_zero, infty], 'D2': [lims_zero, infty], 'n1': [
-            lims_zero, infty], 'n2': [lims_zero, infty], 'n12': [0, infty]}
+        # These intervals need to be updated if the a priori working region changes
+        all_integration_limits = {'D1': [0.01 / 10, 5 * 10], 'D2': [0.01 / 10, 5 * 10],
+                                  'n1': [0.01 / 10, 10 * 10], 'n2': [0.01 / 10, 10 * 10], 'n12': [0, 10 * 10]}
 
         # Get the scale of the maximum of the posterior to normalize the integrand
+        # def ln_lklh(x): -mini
         largest_ln_value = max([-minimize_me(point) for point in points])
 
         # If fitting the link model, use only 1 breakpoint - the MLE
@@ -831,9 +836,12 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
             """Renormalize the function before integration"""
             return exp(-minimize_me(args) - largest_ln_value)
 
-        opts = [{'points': el, 'epsabs': 1e-1, 'epsrel': 1e-1} for el in new_points]
+        tol = 1e-1
+        opts = [{'points': el, 'epsabs': tol, 'epsrel': tol} for el in new_points]
         integration_limits = [all_integration_limits[name] for name in names]
         res = nquad(integrand, ranges=integration_limits, opts=opts)
+        print('Integration output: ', res)
+        # print('Largest ln value: ', largest_ln_value)
 
         return log(res[0]) + largest_ln_value
 
@@ -908,24 +916,28 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     print(f'\nFound the following (minimi, ln_evidence) in {tries} tries:\n', [
           (min[0], min[1]) for min in mins])
 
-    if np.isnan(ln_true_evidence):
-        # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
-        success = False
-        for _, _, min in mins:
-            if min.success or (not min.success and min.status == 2):
-                # Estimate the Hessian in the MLE
-                ln_model_evidence = calculate_laplace_approximation(min)
+    # if np.isnan(ln_true_evidence):
+    # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
+    success = False
+    for _, ln_laplace_evidence, min in mins:
+        if min.success or (not min.success and min.status == 2):
 
-                # if ln_model_evidence <= 0:
-                #     # If this was not a minimum
-                #     continue
+            if not np.isnan(ln_laplace_evidence):
+                # If this was not a minimum, the returned value will be nan.
+                # success = True
+                break
+    # Compare with true minimum if calculated and take the largest.
+    # This is because the Laplace approximation always provides a lower-bound estimate
+    # if np.isnan(ln_true_evidence):
+    #     ln_model_evidence = ln_laplace_evidence
+    # elif np.isnan(ln_laplace_evidence):
+    #     ln_model_evidence = ln_true_evidence
+    # else:
+    ln_model_evidence = np.nanmax([ln_laplace_evidence, ln_true_evidence])
+    success = not np.isnan(ln_model_evidence)
 
-                if not np.isnan(ln_model_evidence):
-                    # If this was not a minimum, the returned value will be nan.
-                    success = True
-                    break
-    else:
-        ln_model_evidence = ln_true_evidence
+    # else:
+    #     ln_model_evidence = ln_true_evidence
 
     # Restore the parameters from log
     if bl_log_parameter_search:

@@ -61,13 +61,13 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
-    trials = 5  # 50  # 1000
+    trials = 50  # 20  # 50  # 1000
     D2 = 0.4  # um^2/s
     D1 = 5 * D2   # um^2/s; 0.4
     n1 = 0.1
     n2 = 0.1
     # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
-    Ms = [100, 200]  # required number of points in a trajectory; 100
+    Ms = [10, 100, 200]  # required number of points in a trajectory; 100
     # N = 101
 
     dt = 0.05  # s 0.3
@@ -82,7 +82,7 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
 
     # Parameters varying in the plot
 
-    n12_range = [1e-3, 10]
+    n12_range = [1e-2, 10]
     n12_points = 40
     n12s = np.logspace(log10(n12_range[0]), log10(n12_range[1]), num=n12_points)
 
@@ -178,7 +178,7 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
     plt.title(
         f'trials={trials}, D1={D1:.2f}, D2={D2:.2f},\nn1={n1:.2f}, n2={n1:.2f}, dt={dt}, L={L}')
 
-    plt.legend(loc='upper left')
+    plt.legend(loc='lower left')
     plt.tight_layout()
     plt.show()
 
@@ -201,14 +201,14 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
-    trials = 5  # 1000
+    trials = 20  # 1000
     D2 = 0.4  # um^2/s
     # D1 = 5 * D2   # um^2/s; 0.4
     n1 = 0.1
     n2 = 0.1
     n12 = n1
     # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
-    Ms = [100, 200]  # required number of points in a trajectory; 100
+    Ms = [10, 100, 200]  # required number of points in a trajectory; 100
     # N = 101
 
     dt = 0.05  # s 0.3
@@ -311,7 +311,7 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     plt.show()
 
     fig_folder = 'figures'
-    figname = f'diffusivity_dependence'
+    figname = f'diffusivity_dependence-weak'
     figpath = os.path.join(fig_folder, figname)
     plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
     plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
@@ -323,18 +323,22 @@ def plot_localization_dependence(seed=None, particle=1, verbose=False, recalcula
     """
     The function loads data for the specified parameters and makes the plot.
 
+    Parameters:
+
     If dry_run = True, the calculations are not performed, but instead an arguments file is created to be fed into cluster.
     Note that the means and the confidence intervals are calculated for lg(B), not for B.
+
+    particle - the particle, whose localization is varied
     """
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
-    trials = 5  # 1000
+    trials = 20  # 1000
     D2 = 0.4  # um^2/s
     D1 = 5 * D2   # um^2/s; 0.4
     # n1 = 2e3
     # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
-    Ms = [100, 200]  # required number of points in a trajectory; 100
+    Ms = [10, 100, 200]  # required number of points in a trajectory; 100
     # N = 101
 
     dt = 0.05  # s 0.3

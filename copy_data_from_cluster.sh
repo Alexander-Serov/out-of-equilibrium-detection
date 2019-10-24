@@ -9,8 +9,9 @@ SERVER_PATH=./out-of-equilibrium-detection/job-manager/data/
 LOCAL_PATH=/mnt/d/calculated_data/out-of-equilibrium_detection/
 EXTENSION="*.pyc"
 
+echo "Copying results calculated on $NEWER_THAN or later..."
 ssh aserov@tars.pasteur.fr touch --date $NEWER_THAN start_date
-echo "Found" `ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l` "files to copy"
+echo "Found" `ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l` "files to copy..."
 
 ssh aserov@tars.pasteur.fr rm -f ./copy.tar
 echo "Compressing..."

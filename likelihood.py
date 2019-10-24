@@ -553,7 +553,6 @@ def get_ln_prior_func():
     def ln_D_prior(D):
         """
         Same prior for D1 and D2.
-        Just a Gamma distribution with specific mode and variances.
         """
         # return -gammaln(a) - a * log(theta) + (a - 1) * log(D) - D / theta # gamma distribution
         # # this is inverse-Gamma distribution
@@ -584,8 +583,8 @@ def get_ln_prior_func():
         An inverse-gamma distribution to have long tails and in theory allow stronger localization.
         """
         return -log(n) - 1 / 2 * log(2 * pi * sigma2_n) - (log(n) - mu_n)**2 / 2 / sigma2_n
-        # inverse gamma distribution
-        return a * log(beta) - gammaln(a) - (a + 1) * log(n) - beta / n
+        # # inverse gamma distribution
+        # return a * log(beta) - gammaln(a) - (a + 1) * log(n) - beta / n
 
     def cdf_n_prior(n):
         # log-normal
@@ -597,22 +596,34 @@ def get_ln_prior_func():
         # else:
         #     return 0
 
+    # I decrease the interval to force a stronger gradient and easier convergence. This is OK since it favors the no-link model
     n12_interval = [0, 10]
     tau = 1 / 100
-    a = 1
-    lam = n12_interval[1] / (tau**(-1 / (a + 1)) - 1)
+    k = 2
+    if tau == 1 / 100:
+        a = 7.638352067993813
+    else:
+        # Conditions the right boundary of the interval. Only valid for k=2
+        a = root_scalar(lambda a: exp(-1 + a) - a / tau, bracket=[1, 1e7])
+    theta = n12_interval[1] / a
+
+    # a = 1
+    # lam = n12_interval[1] / (tau**(-1 / (a + 1)) - 1)
+
+    # Gamma distribution
 
     def ln_n_link_prior(n):
         """
         n_{12} link prior.
         A Lomax distribution.
         """
-
-        return log(a) - log(lam) - (a + 1) * log(1 + n / lam)
+        return -gammaln(k) - k * log(theta) + (k - 1) * log(n) - n / theta
+        # return log(a) - log(lam) - (a + 1) * log(1 + n / lam)
 
     def cdf_n_link_prior(n):
         """CDF for the prior"""
-        return 1 - (1 + n / lam)**(-a)
+        return gammainc(k, n / theta)
+        # return 1 - (1 + n / lam)**(-a)
 
     # Assemble the prior function
     def ln_prior(D1, n1, D2=None, n2=None, n12=None):
@@ -674,7 +685,10 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
     # number of random starting points for the MLE search before abandoning
     # Based on 99% chance estimate in a simple binomial model.
-    tries = 2 + 1 if not link else 60 + 1
+
+    # tries = 2 + 1 if not link else 5 + 1  # 80 + 1
+    tries = 3
+
     # tries = 2 + 1 if not link else 10 + 1
     # tries = 2 + 1
     tol = 1e-5  # search tolerance
@@ -749,12 +763,17 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
     # print(method, type(method), method == 'Nelder-Mead', method is 'Nelder-Mead')
     # print(method, type(method), method == 'BFGS', method is 'BFGS')
+    options_BFGS = {'disp': verbose, 'gtol': tol}
+    fatol = 1e-2
+    xatol = 1e-6
+    options_NM = {'disp': verbose, 'maxiter': d * 1000,
+                  'xatol': xatol, 'fatol': fatol, 'disp': False}
 
+    # method = 'Nelder-Mead'
     if method == 'BFGS':
-        options = {'disp': verbose, 'gtol': tol}
-
+        options = options_BFGS
     elif method == 'Nelder-Mead':
-        options = {'disp': verbose, 'maxiter': d * 1000}
+        options = options_NM
     else:
         raise RuntimeError(f'Method "{method}" not implemented')
 
@@ -781,6 +800,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
             hess = nd.Hessian(minimize_me)(min.x)
             det_inv_hess = 1 / np.linalg.det(hess)
             hess_inv = np.nan
+        print(' Hess_inv', det_inv_hess, hess_inv)
 
         if det_inv_hess <= 0:
             # If the Hessian is non-positive, it was not a minimum
@@ -793,7 +813,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
                              - minimize_me(min.x))
         print('Laplace approximation of the normalized integral ', exp((d / 2) * log(2 * pi)
                                                                        + 1 / 2 * log(det_inv_hess)))
-        print(' Hess_inv', det_inv_hess, hess_inv)
+        # print(' Hess_inv', det_inv_hess, hess_inv)
         return ln_model_evidence
 
     def calculate_evidence_integral(points=None):
@@ -862,23 +882,23 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
             else:
                 print('Starting MLE guess loaded successfully:\n', (start_point, old_ln_value))
 
-        elif i == tries - 1:
-            # On the last try, retry from the best guess so far
-            mins.sort(key=itemgetter(0))
-            start_point = to_dict(*mins[0][2].x)
-            print('On the last try, retry from the best guess so far:\n', start_point)
-
-            # Also estimate how many of the best values are close
-            # frac is the fraction of tries that the best minimum was found if there were no retrials from the best
-            atol = 0.1
-            fun_vals = [min[0] for min in mins]
-            diffs = np.array([np.abs(fun_vals[i] - fun_vals[0]) for i in range(1, len(fun_vals))])
-            # add 1 to count the value itself
-            times_best_found = np.sum(diffs < atol) + 1
-            real_tries = tries - 1  # subtract 1 because repeating from the best point
-            # Store the value in a file. Remember there is always at least 1 because we recalculate the best point
-            frac = times_best_found / real_tries
-            save_number_of_close_values(link, times_best_found, real_tries, frac)
+        # elif i == tries - 1:
+        #     # On the last try, retry from the best guess so far
+        #     mins.sort(key=itemgetter(0))
+        #     start_point = to_dict(*mins[0][2].x)
+        #     print('On the last try, retry from the best guess so far:\n', start_point)
+        #
+        #     # Also estimate how many of the best values are close
+        #     # frac is the fraction of tries that the best minimum was found if there were no retrials from the best
+        #     atol = tol
+        #     fun_vals = [min[0] for min in mins]
+        #     diffs = np.array([np.abs(fun_vals[i] - fun_vals[0]) for i in range(1, len(fun_vals))])
+        #     # add 1 to count the value itself
+        #     times_best_found = np.sum(diffs < atol) + 1
+        #     real_tries = tries - 1  # subtract 1 because repeating from the best point
+        #     # Store the value in a file. Remember there is always at least 1 because we recalculate the best point
+        #     frac = times_best_found / real_tries
+        #     save_number_of_close_values(link, times_best_found, real_tries, frac)
 
         else:  # sample from the prior
             start_point = sample_from_the_prior(link)
@@ -894,12 +914,21 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
             start_point_vals = to_list(start_point)
             fnc = minimize_me
 
-        min = minimize(fnc, start_point_vals, tol=tol, method=method,
+        min = minimize(fnc, start_point_vals, tol=1e-5, method=method,
                        options=options)
+        print('Full optimization result:\n', min)
+        grad = nd.Gradient(minimize_me)(min.x)
+        grad_norm = max(abs(grad))
+        print('Gradient in the minimum:\t', grad, '\tMax. norm:\t', grad_norm)
 
         # Store the found point if the hessian is not diagonal (because it's not a new point then)
         # if np.abs(np.linalg.det(min.hess_inv)) >= 1e-8:
-        ln_evidence = calculate_laplace_approximation(min)
+        GRAD_NORM_TOL = 1
+        if grad_norm < GRAD_NORM_TOL:
+            ln_evidence = calculate_laplace_approximation(min)
+        else:
+            print(f'Warning! Gradient too large (norm = {grad_norm}). Ignoring this result')
+            ln_evidence = np.nan
         element = (min.fun, ln_evidence, min)
         mins.append(element)
         retry(i, min, ln_evidence)
@@ -909,9 +938,11 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
 
     # Calculate evidence integral
     points = [el[2].x for el in mins]
-    with stopwatch('Evidence integration'):
-        ln_true_evidence = calculate_evidence_integral(points)
-    print('Direct numerical evaluation of the evidence integral: ', ln_true_evidence)
+    # with stopwatch('Evidence integration'):
+    ln_true_evidence = np.nan
+    #     ln_true_evidence = calculate_evidence_integral(points)
+
+    # print('Direct numerical evaluation of the evidence integral: ', ln_true_evidence)
 
     print(f'\nFound the following (minimi, ln_evidence) in {tries} tries:\n', [
           (min[0], min[1]) for min in mins])
@@ -935,7 +966,29 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     # else:
     ln_model_evidence = np.nanmax([ln_laplace_evidence, ln_true_evidence])
     success = not np.isnan(ln_model_evidence)
-
+    # if success:
+    #     print('Rerunning BFGS on the best min:\n',
+    #           minimize(fnc, min.x, tol=1e-5, method='BFGS',
+    #                    options=options_BFGS))
+    #     plt.figure(6 + int(link), clear=True)
+    #
+    #     def plot_func(xs, dim):
+    #         out = []
+    #         for x in xs:
+    #             args = min.x.copy()
+    #             args[dim] = x
+    #             out.append(minimize_me(args))
+    #         return out
+    #     # step = 0.1
+    #     for dim in range(len(names)):
+    #         xs = np.linspace(np.min([min.x[dim] * 0.1, 0.1]),
+    #                          np.max([min.x[dim] * 5, 1]), num=100, endpoint=True)
+    #         plt.plot(xs, plot_func(xs, dim), label=names[dim])
+    #
+    #     plt.legend()
+    #     plt.show(block=False)
+    #     import time
+    #     time.sleep(1)
     # else:
     #     ln_model_evidence = ln_true_evidence
 
@@ -951,7 +1004,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         try:
             lam, v = np.linalg.eig(np.linalg.inv(min.hess_inv))
             # print(f'Eigenvalues and eigenvectors of the Hessian for the MLE:\n', )
-            print('Eigenvalues: ', lam)
+            print('Eigenvaluesof the Hessian: ', lam)
             print('Eigenvectors: ', v)
         except Exception:
             pass

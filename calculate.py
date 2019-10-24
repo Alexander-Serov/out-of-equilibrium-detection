@@ -131,6 +131,8 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
     # print('ln evidence with and without link', ln_evidence_with_link, ln_evidence_free)
     print('lg Bayes factor for the presence of the link ', lg_bayes_factor)
 
+    # raise RuntimeError()
+
     # Save data to disk
     dict_data['lg_B'] = lg_bayes_factor
     dict_data['ln_evid_link'] = ln_evidence_with_link

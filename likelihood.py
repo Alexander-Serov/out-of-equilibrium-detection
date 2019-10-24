@@ -532,24 +532,27 @@ def get_ln_prior_func():
 
     Also provide a sampler to sample from the prior.
     """
-    # Inverse-gamma distribution based on an interval
-    # Require that the decrease on the borders of the interval as compared to the maximum is of the order of tau
-    D_interval = [0.01, 5]
-    tau = 1 / 100
+    # Diffusivities
+    # Inverse-gamma distribution. Set mode to scale
+    # D_interval = [0.01, 5]
+    # tau = 1 / 100
+    D_scale = 0.5
     alpha = 1
+    beta = (alpha + 1) * D_scale
 
-    def eqn(beta, x1):
-        return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
-
-    sol = root_scalar(eqn, bracket=[1e-7, 1], args=(D_interval[1]))
-    beta = sol.root
+    # def eqn(beta, x1):
+    #     return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
+    #
+    # sol = root_scalar(eqn, bracket=[1e-7, 1], args=(D_interval[1]))
+    # beta = sol.root
 
     def ln_D_prior(D):
         """
         Same prior for D1 and D2.
         """
         # return -gammaln(a) - a * log(theta) + (a - 1) * log(D) - D / theta # gamma distribution
-        # # this is inverse-Gamma distribution
+
+        # inverse-Gamma
         return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(D) - beta / D
 
         # Log-normal distribution defining an interval
@@ -564,43 +567,52 @@ def get_ln_prior_func():
         else:
             return 0
 
-    # n0 = 0.1      # s^{-1}, spring constant prior scale
-    # alpha = 3 / 2
-    # beta = n0 * (alpha - 1)
+    # Localization strength.
+    # Inverse gamma. Set mode to scale
+    # n_interval = [0.01, 100]
+    # tau = 1 / 100
+    n_scale = 1
+    alpha = 1
+    beta = (alpha + 1) * D_scale
 
-    n_interval = [0.01, 10]
-    tau = 1 / 100
-    mu_n = np.mean(log(n_interval))
-    sigma2_n = -(log(n_interval[1]) - mu_n)**2 / 2 / log(tau)
+    # def eqn(beta, x1):
+    #     return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
+    #
+    # sol = root_scalar(eqn, bracket=[1e-7, 10], args=(n_interval[1]))
+    # beta = sol.root
+    # # print('beta_n', beta)
 
     def ln_n_prior(n):
         """
         An inverse-gamma distribution to have long tails and in theory allow stronger localization.
         """
-        return -log(n) - 1 / 2 * log(2 * pi * sigma2_n) - (log(n) - mu_n)**2 / 2 / sigma2_n
+        return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(n) - beta / n
+
+        # return -log(n) - 1 / 2 * log(2 * pi * sigma2_n) - (log(n) - mu_n)**2 / 2 / sigma2_n
         # # inverse gamma distribution
         # return a * log(beta) - gammaln(a) - (a + 1) * log(n) - beta / n
 
     def cdf_n_prior(n):
-        # log-normal
-        return 1 / 2 * (1 + erf((log(n) - mu_n) / np.sqrt(2 * sigma2_n)))
+        # return 1 / 2 * (1 + erf((log(n) - mu_n) / np.sqrt(2 * sigma2_n)))
 
-        # if n > 0:
-        #     # return gammainc(a, D / theta) # gamma
-        #     return gammaincc(a, beta / n)  # inverse-gamma
-        # else:
-        #     return 0
+        if n > 0:
+            # return gammainc(a, D / theta) # gamma
+            return gammaincc(alpha, beta / n)  # inverse-gamma
+        else:
+            return 0
 
-    # I decrease the interval to force a stronger gradient and easier convergence. This is OK since it favors the no-link model
-    n12_interval = [0, 10]
-    tau = 1 / 100
+    # Gamma distribution. Set mode to scale
+    # n12_interval = [0, 100]
+    # tau = 1 / 100
     k = 2
-    if tau == 1 / 100:
-        a = 7.638352067993813
-    else:
-        # Conditions the right boundary of the interval. Only valid for k=2
-        a = root_scalar(lambda a: exp(-1 + a) - a / tau, bracket=[1, 1e7])
-    theta = n12_interval[1] / a
+    theta = n_scale / (k - 1)
+
+    # if tau == 1 / 100:
+    #     a = 7.638352067993813
+    # else:
+    #     # Conditions the right boundary of the interval. Only valid for k=2
+    #     a = root_scalar(lambda a: exp(-1 + a) - a / tau, bracket=[1, 1e7])
+    # theta = n12_interval[1] / a
 
     # a = 1
     # lam = n12_interval[1] / (tau**(-1 / (a + 1)) - 1)

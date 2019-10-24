@@ -92,17 +92,22 @@ def hash_from_dictionary(true_parameters, dim=2):
 
 def load_data(hash):
     """Load a data dictionary from a pickle file"""
-    filename = os.path.join(data_folder, 'data_' + hash + '.pyc')
+    filename = 'data_' + hash + '.pyc'
+    filepath = os.path.join(data_folder, filename)
     dict_data = {}
     loaded = False
-    if os.path.exists(filename):
-        with open(filename, 'rb') as file:
+    if os.path.exists(filepath):
+        with open(filepath, 'rb') as file:
             try:
                 dict_data = pickle.load(file)
                 if isinstance(dict_data, dict):
                     loaded = True
-            except:
-                pass
+                    # print(f'File {filename} loaded successfully')
+            except Exception() as e:
+                print('Load failed with exception', e)
+    # else:
+        # print(f'Cannot load because file "{filename}" not found')
+        # 1
 
     return dict_data, loaded
 

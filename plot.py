@@ -51,7 +51,7 @@ def plot_periodogram(modes_avg, PX_norm_avg, PY_norm_avg, D1, D2, M):
     fig.show()
 
 
-def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, dry_run=False):
+def plot_link_strength_dependence(trials=20, verbose=False, recalculate=False, dry_run=False):
     """
     The function loads data for the specified parameters and plots the link strength dependence plot.
 
@@ -61,11 +61,11 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
-    trials = 50  # 20  # 50  # 1000
+    # trials = 50  # 20  # 50  # 1000
     D2 = 0.4  # um^2/s
     D1 = 5 * D2   # um^2/s; 0.4
-    n1 = 0.1
-    n2 = 0.1
+    n1 = 1
+    n2 = 1
     # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
     Ms = [10, 100, 200]  # required number of points in a trajectory; 100
     # N = 101
@@ -82,7 +82,7 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
 
     # Parameters varying in the plot
 
-    n12_range = [1e-2, 10]
+    n12_range = [1e-2, 100]
     n12_points = 40
     n12s = np.logspace(log10(n12_range[0]), log10(n12_range[1]), num=n12_points)
 
@@ -95,10 +95,6 @@ def plot_link_strength_dependence(seed=None, verbose=False, recalculate=False, d
 
     lg_BF_vals = np.full([len(Ms), n12_points, trials], np.nan)
     for trial in trange(trials, desc='Loading/calculating trial data'):
-        if seed is not None:
-            trial_seed = seed + trial
-        else:
-            trial_seed = None
 
         for ind_M, M in enumerate(Ms):
             T = dt * M  # s
@@ -319,7 +315,7 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     return lg_BF_vals
 
 
-def plot_localization_dependence(seed=None, particle=1, verbose=False, recalculate=False, dry_run=False):
+def plot_localization_dependence(trials=20, particle=1, verbose=False, recalculate=False, dry_run=False):
     """
     The function loads data for the specified parameters and makes the plot.
 
@@ -333,7 +329,6 @@ def plot_localization_dependence(seed=None, particle=1, verbose=False, recalcula
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
-    trials = 20  # 1000
     D2 = 0.4  # um^2/s
     D1 = 5 * D2   # um^2/s; 0.4
     # n1 = 2e3

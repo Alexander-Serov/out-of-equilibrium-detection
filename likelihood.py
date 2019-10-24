@@ -532,23 +532,17 @@ def get_ln_prior_func():
 
     Also provide a sampler to sample from the prior.
     """
-    # D0 = 0.5  # um^2/s, expected diffusivity scale
-    #
-    # # Inverse-gamma
-    # a = 3 / 2     # no units, shape. Corresponds to 2 jumps. Must be >1 for the mean
-    # beta = D0 * (a - 1)  # um^2/s, so that the mean is D0
-
-    # Parameters of a log-normal distribution based on an interval
+    # Inverse-gamma distribution based on an interval
     # Require that the decrease on the borders of the interval as compared to the maximum is of the order of tau
     D_interval = [0.01, 5]
     tau = 1 / 100
-    mu_D = np.mean(log(D_interval))
-    sigma2_D = -(log(D_interval[1]) - mu_D)**2 / 2 / log(tau)
+    alpha = 1
 
-    # # Gamma
-    # a = 2     # no units
+    def eqn(beta, x1):
+        return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
 
-    # theta = D0 / (a - 1)
+    sol = root_scalar(eqn, bracket=[1e-7, 1], args=(D_interval[1]))
+    beta = sol.root
 
     def ln_D_prior(D):
         """
@@ -556,16 +550,17 @@ def get_ln_prior_func():
         """
         # return -gammaln(a) - a * log(theta) + (a - 1) * log(D) - D / theta # gamma distribution
         # # this is inverse-Gamma distribution
-        # return a * log(beta) - gammaln(a) - (a + 1) * log(D) - beta / D
+        return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(D) - beta / D
+
         # Log-normal distribution defining an interval
-        return -log(D) - 1 / 2 * log(2 * pi * sigma2_D) - (log(D) - mu_D)**2 / 2 / sigma2_D
+        # return -log(D) - 1 / 2 * log(2 * pi * sigma2_D) - (log(D) - mu_D)**2 / 2 / sigma2_D
 
     def cdf_D_prior(D):
         if D > 0:
             # return gammainc(a, D / theta) # gamma
-            # return gammaincc(a, beta / D)  # inverse-gamma
+            return gammaincc(alpha, beta / D)  # inverse-gamma
             # log-normal
-            return 1 / 2 * (1 + erf((log(D) - mu_D) / np.sqrt(2 * sigma2_D)))
+            # return 1 / 2 * (1 + erf((log(D) - mu_D) / np.sqrt(2 * sigma2_D)))
         else:
             return 0
 

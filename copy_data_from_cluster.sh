@@ -4,28 +4,51 @@
 # For increased efficiency, the files are first tarred and then untarred
 # Needs to be launched from a UNIX environment
 
-NEWER_THAN=2019-10-24 # including the date
+NEWER_THAN="2019-10-29 00:00:00" # default start date
 SERVER_PATH=./out-of-equilibrium-detection/job-manager/data/
 LOCAL_PATH=/mnt/d/calculated_data/out-of-equilibrium_detection/
 EXTENSION="*.pyc"
 
-echo "Copying results calculated on $NEWER_THAN or later..."
-ssh aserov@tars.pasteur.fr touch --date $NEWER_THAN start_date
-echo "Found" `ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l` "files to copy..."
+# Save current date & time for further re-use
+ssh aserov@tars.pasteur.fr touch start_date2
 
-ssh aserov@tars.pasteur.fr rm -f ./copy.tar
-echo "Compressing..."
-ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" -exec "tar rf ./copy.tar --xform='s|.*/||' --show-transformed-names {} +"
+# Check if last copy date file exists
+if ssh aserov@tars.pasteur.fr "test -e" start_date;
+then
+        NEWER_THAN=`ssh aserov@tars.pasteur.fr "date -r" start_date`
+else
+        ssh aserov@tars.pasteur.fr touch --date "'$NEWER_THAN'" start_date
+fi
+echo "Copying results calculated after $NEWER_THAN"
 
-# xform is used to drop the absolute path
-echo "Done!"
-scp aserov@tars.pasteur.fr:./copy.tar ./
-echo "Extracting..."
-tar xf ./copy.tar -C $LOCAL_PATH --overwrite
-echo "Done!"
+# Check if any files need to be copied
+NUM_FILES=`ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l`
+echo "Found $NUM_FILES files to copy..."
+if (($NUM_FILES>0))
+then
+        echo "Compressing..."
+        ssh aserov@tars.pasteur.fr rm -f ./copy.tar
+        # xform is used to drop the absolute path
+        ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" -exec "tar rf ./copy.tar --xform='s|.*/||' --show-transformed-names {} +"
+        echo "Done!"
 
-# Cleaning up
-rm ./copy.tar
-ssh aserov@tars.pasteur.fr rm ./copy.tar
+        # Copy
+        scp aserov@tars.pasteur.fr:./copy.tar ./
 
-# ssh aserov@tars.pasteur.fr rm ./start_date
+        echo "Extracting..."
+        tar xf ./copy.tar -C $LOCAL_PATH --overwrite
+        echo "Done!"
+
+        # Cleaning up
+        rm ./copy.tar
+        ssh aserov@tars.pasteur.fr rm ./copy.tar
+else
+        echo "No files to copy. Finished!"
+fi
+
+# Replace old-date file with a new one
+ssh aserov@tars.pasteur.fr mv -f start_date2 start_date
+
+
+
+#### ssh aserov@tars.pasteur.fr rm ./start_date

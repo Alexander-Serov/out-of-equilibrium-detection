@@ -534,11 +534,21 @@ def get_ln_prior_func():
     """
     # Diffusivities
     # Inverse-gamma distribution. Set mode to scale
-    # D_interval = [0.01, 5]
+    D_interval = interval = [0.01, 10]
     # tau = 1 / 100
-    D_scale = 0.5
+    # D_scale = 0.5
     alpha = 1
-    beta = (alpha + 1) * D_scale
+
+    # beta = (alpha + 1) * D_scale
+    def ln_func(x, beta):
+        return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(x) - beta / x
+
+    def eqn(beta):
+        # Condition: equal value at interval borders
+        return ln_func(interval[0], beta) - ln_func(interval[1], beta)
+
+    sol = root_scalar(eqn, bracket=[1e-7, 1e5])
+    beta = sol.root
 
     # def eqn(beta, x1):
     #     return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
@@ -569,11 +579,20 @@ def get_ln_prior_func():
 
     # Localization strength.
     # Inverse gamma. Set mode to scale
-    # n_interval = [0.01, 100]
+    n_interval = interval = [0.01, 100]
     # tau = 1 / 100
-    n_scale = 1
+    # n_scale = 1
     alpha = 1
-    beta = (alpha + 1) * D_scale
+    # beta = (alpha + 1) * D_scale
+
+    def ln_func(x, beta):
+        return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(x) - beta / x
+
+    def eqn(beta):
+        # Condition: equal value at interval borders
+        return ln_func(interval[0], beta) - ln_func(interval[1], beta)
+    sol = root_scalar(eqn, bracket=[1e-7, 1e5])
+    beta = sol.root
 
     # def eqn(beta, x1):
     #     return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
@@ -602,10 +621,19 @@ def get_ln_prior_func():
             return 0
 
     # Gamma distribution. Set mode to scale
-    # n12_interval = [0, 100]
+    n12_interval = [1e-5, 1e3]
     # tau = 1 / 100
     k = 2
-    theta = n_scale / (k - 1)
+    # theta = n_scale / (k - 1)
+
+    def ln_func(x, theta):
+        return -gammaln(k) - k * log(theta) + (k - 1) * log(x) - x / theta
+
+    def eqn(theta):
+        return ln_func(interval[0], theta) - ln_func(interval[1], theta)
+
+    sol = root_scalar(eqn, bracket=[1e-7, 1e5])
+    theta = sol.root
 
     # if tau == 1 / 100:
     #     a = 7.638352067993813

@@ -50,6 +50,7 @@ angle = 0
 trial = 0   # the trial number
 recalculate = False
 
+
 k1, k2, k12 = np.array([n1, n2, n12]) * gamma
 T = dt * (N - 1)  # s
 M = N - 1
@@ -66,30 +67,17 @@ true_parameters = {name: val for name, val in zip(
 np.log10(10)
 # %%
 lg_BF_vals = plot_link_strength_dependence(
-    trials=5, verbose=False, recalculate=False, dry_run=True)
+    trials=500, n12_range=[1e-1, 1e3], verbose=False, recalculate=False, dry_run=True)
 
 # %%
-lg_BF_vals = plot_diffusivity_dependence(seed=0, verbose=False, recalculate=False, dry_run=False)
+lg_BF_vals = plot_diffusivity_dependence(
+    trials=200, D1_range=[0.01, 10], verbose=False, recalculate=False, dry_run=False)
 
 # %%
 lg_BF_vals = plot_localization_dependence(
-    trials=20, verbose=False, recalculate=False, dry_run=False)
+    trials=100, n_range=[0.3, 100], verbose=False, recalculate=False, dry_run=False)
 
 # %%
-np.log(0.01) / np.log(1 - 20658 / 22540)
-3460 / 22540
-np.log(0.01) / np.log(1 - 3460 / 22540)
-1
-# fit_params = {'D1': 0.009556111157819758, 'D2': 0.16340672297424766,
-#               'n1': 5.050123555707306e2, 'n2': 127.64011605246695, 'n12': 23.693359560798886 * 0}
-# estimate_sigma2_matrix(fit_params=fit_params, ks_fit=[
-#                        11], true_parameters=true_parameters)  # %% Simulate the particle system
-# # Set recalculate = True to force recalculation at every start
-# # Otherwise the last results will be reloaded
-# t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
-#     true_parameters=true_parameters, plot=True, save_figure=False, recalculate=recalculate, seed=None)
-# # print(hash)
-#
 #
 # # %% Calculate the Bayes factor
 # lg_bayes_factor, ln_evidence_with_link, ln_evidence_free = calculate_bayes_factor(
@@ -238,24 +226,56 @@ plt.hist([a1[1] for a1 in a], bins=100)
 tau = 1 / 100
 root_scalar(lambda a: np.exp(-1 + a) - a / tau, bracket=[1, 1e7])
 
-# %% Find an inverse-gamma prior for D:
-interval = [0.01, 100]
-tau = 1 / 100
+# %% Find an inverse-gamma prior
+interval = [0.01, 5]
+# tau = 1 / 100
 alpha = 1
 
 
-def eqn(beta, x1):
-    return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
+def ln_func(x, beta):
+    return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(x) - beta / x
 
 
-sol = root_scalar(eqn, bracket=[1e-7, 1e10], args=(interval[0]))
+def eqn(beta):
+    return ln_func(interval[0], beta) - ln_func(interval[1], beta)
+
+
+# def eqn(beta, x1):
+#     return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
+
+
+sol = root_scalar(eqn, bracket=[1e-7, 1e5])
 beta = sol.root
-beta
+print('beta', beta)
 
 
-def ln_func(D):
-    return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(D) - beta / D
+[np.exp(ln_func(x, beta)) for x in interval]
+eqn(1)
+
+# %% Find a gamma function prior
+interval = [1e-5, 100]
+# tau = 1 / 100
+k = 2
 
 
-[ln_func(x) for x in interval]
-eqn(1e-4, interval[0])
+def ln_func(x, theta):
+    return -gammaln(k) - k * log(theta) + (k - 1) * log(x) - x / theta
+    # return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(x) - beta / x
+
+
+def eqn(theta):
+    return ln_func(interval[0], theta) - ln_func(interval[1], theta)
+
+
+# def eqn(beta, x1):
+#     return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
+
+
+sol = root_scalar(eqn, bracket=[1e-7, 1e5])
+theta = sol.root
+print('theta', theta)
+
+
+print('Borders', [np.exp(ln_func(x, theta)) for x in interval])
+eqn(1)
+457 / 34 / 100 * np.array([366, 9.4, 66, 4])

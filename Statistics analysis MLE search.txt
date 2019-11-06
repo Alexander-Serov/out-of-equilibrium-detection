@@ -2,3 +2,5 @@ Without link: 20658/22540. Probability (success) estimate: 0.9165. Hence min. nu
 
 With the link: the numbers are low. I may need to recalculate with a higher tries number. But for the moment:
 3460/22540. p = 0.1535. Then the min. number of tries would be: 27.6 and it is most likely underestimated. I will need to re-evaluate it. For the moment, I'll set N=40.
+
+With the link recalculated: p = 2834/48000 = 0.059. The the min number of tries would be N >= ln(0.01)/ln(1-p) =76 

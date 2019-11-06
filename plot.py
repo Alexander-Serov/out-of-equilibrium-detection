@@ -16,7 +16,7 @@ from simulate import simulate_2_confined_particles_with_fixed_angle_bond
 from support import get_cluster_args_string, set_figure_size
 
 # Plot parameters
-alpha_shade = 0.3
+alpha_shade = 0.25
 confidence_level = 0.95
 height_factor = 0.8
 page_width_frac = 0.5
@@ -51,7 +51,7 @@ def plot_periodogram(modes_avg, PX_norm_avg, PY_norm_avg, D1, D2, M):
     fig.show()
 
 
-def plot_link_strength_dependence(trials=20, verbose=False, recalculate=False, dry_run=False):
+def plot_link_strength_dependence(trials=20, n12_range=[1e-1, 1e3], verbose=False, recalculate=False, dry_run=False):
     """
     The function loads data for the specified parameters and plots the link strength dependence plot.
 
@@ -82,8 +82,8 @@ def plot_link_strength_dependence(trials=20, verbose=False, recalculate=False, d
 
     # Parameters varying in the plot
 
-    n12_range = [1e-2, 100]
-    n12_points = 40
+    # n12_range = [1e-1, 1e3]
+    n12_points = 50
     n12s = np.logspace(log10(n12_range[0]), log10(n12_range[1]), num=n12_points)
 
     # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
@@ -153,15 +153,16 @@ def plot_link_strength_dependence(trials=20, verbose=False, recalculate=False, d
     xs = n12s / n1
     for ind_M in range(len(Ms)):
         color = color_sequence[ind_M]
+        zorder = len(Ms) - ind_M
         if trials > 1:
 
             plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
-                             alpha=alpha_shade, color=color)
+                             alpha=alpha_shade, color=color, zorder=zorder)
             # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
             # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
 
         # Mean
-        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}')
+        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
 
     # Significance levels
     xlims = plt.xlim()
@@ -174,7 +175,7 @@ def plot_link_strength_dependence(trials=20, verbose=False, recalculate=False, d
     plt.title(
         f'trials={trials}, D1={D1:.2f}, D2={D2:.2f},\nn1={n1:.2f}, n2={n1:.2f}, dt={dt}, L={L}')
 
-    plt.legend(loc='lower left')
+    plt.legend(loc='upper left')
     plt.tight_layout()
     plt.show()
 
@@ -187,7 +188,7 @@ def plot_link_strength_dependence(trials=20, verbose=False, recalculate=False, d
     return lg_BF_vals
 
 
-def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry_run=False):
+def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False, recalculate=False, dry_run=False):
     """
     The function loads data for the specified parameters and plots the diffusivity dependence plot.
 
@@ -197,12 +198,12 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     # Neeed to specify parameters to be able to load the right files
 
     # %% Constants
-    trials = 20  # 1000
+    # trials = 20  # 1000
     D2 = 0.4  # um^2/s
     # D1 = 5 * D2   # um^2/s; 0.4
-    n1 = 0.1
-    n2 = 0.1
-    n12 = n1
+    n1 = 1
+    n2 = 1
+    n12 = 30
     # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
     Ms = [10, 100, 200]  # required number of points in a trajectory; 100
     # N = 101
@@ -220,8 +221,8 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     # Parameters varying in the plot
 
     # D1_ratio_range = np.array([1e-2, 1e2])
-    D1_range = [0.01, 5]  # D1_ratio_range * D2
-    D1_points = 40
+    # D1_range = [0.01, 10]
+    D1_points = 50
     D1s = np.logspace(log10(D1_range[0]), log10(D1_range[1]), num=D1_points)
 
     # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
@@ -281,15 +282,16 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     xs = D1s / D2
     for ind_M in range(len(Ms)):
         color = color_sequence[ind_M]
+        zorder = len(Ms) - ind_M
         if trials > 1:
 
             plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
-                             alpha=alpha_shade, color=color)
+                             alpha=alpha_shade, color=color, zorder=zorder)
             # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
             # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
 
         # Mean
-        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}')
+        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
 
     # Significance levels
     xlims = plt.xlim()
@@ -300,7 +302,7 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     plt.xlabel('$D_1/D_2$')
     plt.ylabel('Median $\mathrm{lg}(B)$')
     plt.title(
-        f'trials={trials}, D2={D2:.2f}, n1={n1:.1e},\nn2={n1:.1e}, n12={n12:.1e}, dt={dt}, L={L}')
+        f'trials={trials}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, n12={n12:.1f}, dt={dt}, L={L}')
 
     plt.legend(loc='best')
     plt.tight_layout()
@@ -315,7 +317,7 @@ def plot_diffusivity_dependence(seed=None, verbose=False, recalculate=False, dry
     return lg_BF_vals
 
 
-def plot_localization_dependence(trials=20, particle=1, verbose=False, recalculate=False, dry_run=False):
+def plot_localization_dependence(trials=20, n_range=[1e-2, 100], particle=1, verbose=False, recalculate=False, dry_run=False):
     """
     The function loads data for the specified parameters and makes the plot.
 
@@ -343,10 +345,10 @@ def plot_localization_dependence(trials=20, particle=1, verbose=False, recalcula
     # trial = 0   # the trial number
     # recalculate = False
 
-    n_range = np.array([1e-2, 10])
-    n_other = 0.1
-    n12 = 0.1
-    n_points = 40  # 50
+    # n_range = np.array([1e-2, 100])
+    n_other = 1
+    n12 = 30
+    n_points = 50
     if particle == 1:
         n2 = n_other
         # n_range = n_ratio_range * n_other
@@ -420,18 +422,19 @@ def plot_localization_dependence(trials=20, particle=1, verbose=False, recalcula
     # Confidence intervals
     # ax = plt.gca()
     if particle == 1:
-        xs = n1s / n2
+        xs = n1s / n12
     else:
-        xs = n2s / n1
+        xs = n2s / n12
     for ind_M in range(len(Ms)):
         color = color_sequence[ind_M]
+        zorder = len(Ms) - ind_M
         if trials > 1:
 
             plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
-                             alpha=alpha_shade, color=color)
+                             alpha=alpha_shade, color=color, zorder=zorder)
 
         # Mean
-        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}')
+        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
 
     # Significance levels
     xlims = plt.xlim()
@@ -439,10 +442,10 @@ def plot_localization_dependence(trials=20, particle=1, verbose=False, recalcula
     plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
 
     plt.xscale('log')
-    plt.xlabel('$n_1/n_2$' if particle == 1 else '$n_2/n_1$')
+    plt.xlabel('$n_1/n_{12}$')  # '$n_1/n_2$' if particle == 1 else '$n_2/n_1$')
     plt.ylabel('Median $\mathrm{lg}(B)$')
     plt.title(
-        f'trials={trials}, D1={D1:.2f}, D2={D2:.2f}, n12={n12:.1e}, dt={dt}, L={L}')
+        f'trials={trials}, D1={D1:.2f}, D2={D2:.2f}, n12={n12:.1f}, dt={dt}, L={L}')
 
     plt.legend(loc='best')
     plt.tight_layout()

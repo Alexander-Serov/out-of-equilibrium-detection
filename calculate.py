@@ -81,6 +81,11 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
             # print('Bayes factor values reloaded.')
 
             return lg_bayes_factor, ln_evidence_with_link, ln_evidence_free
+        else:
+            print('Loaded lg_B = NaN. Recalculating')
+    # else:
+    #     print('lg_B not found in saved file, or recalculation was requested')
+    #     print('Details:', dict_data)
 
     # Calculate the periodogram
     PX, PY, PX_norm, PY_norm, modes = calculate_periodogram(

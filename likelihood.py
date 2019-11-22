@@ -6,6 +6,7 @@ Those are mainly likelihoods for periodogram components.
 import copy
 import functools
 import logging
+import time
 from datetime import datetime
 from operator import itemgetter
 
@@ -22,12 +23,15 @@ from scipy.integrate import dblquad, nquad
 from scipy.optimize import minimize, root, root_scalar
 from scipy.special import erf, gamma, gammainc, gammaincc, gammaln, logsumexp
 
+from constants_main import color_sequence
 # from plot import plot_periodogram
 from support import (delete_data, hash_from_dictionary, load_data,
                      load_MLE_guess, save_data, save_MLE_guess,
                      save_number_of_close_values, stopwatch)
 
 ln_neg_infty = - 1000 * log(10)
+plot = False
+tries = 3  # 3
 
 # used to evaluate how many points after optimization are similar on the average
 # prior_sampling_statistics_file = 'statistics.dat'
@@ -405,69 +409,326 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
     return ln_prob
 
 
-def get_ln_likelihood_func_2_particles_x_link(ks, M, dt, zs_x=None, zs_y=None):
+def new_likelihood_2_particles_x_link_one_point(dRk, k=1, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3):
+    """
+    # UPDAT
+    Calculate likelihood of one power spectrum observation z for the frequency k.
+    Does not work for k = 0.
+
+    Input:
+    gamma --- viscosity, kg/s,
+    z --- the value of the power spectrum component,
+    n1, n2 , n12 --- variables starting with n are spring constants normalizedby gamma, i.e. n1 = k1 /gamma
+
+    Definitions:
+    R --- 4D vector of locations vs. time, {x1, y1, x2, y2} x N,
+    dR --- 4D vector of displacements, shorter by 1 point,
+    mu = <dR>,
+    ksi = dR - mu --- stochastic part of the displacement,
+
+
+    Important:
+    - The calculations below will be wrong if one of lambda values is 0.
+
+    """
+    ATOL = 1e-5
+    dRk = copy.copy(dRk)
+
+    if np.any(np.array((D1, D2, n1, n2, n12)) < 0):
+        return ln_neg_infty
+
+    # %% Hard-code the eigenvalues and the diagnolizing matrix U
+    # Treat separately the case of n12=0 and n12>0
+    ck = exp(-2 * pi * 1j * k / M)
+    if n12 > ATOL:
+        g = np.sqrt((n1 - n2)**2 + 4 * n12**2)
+        lambdas = np.array([-2 * n1, -2 * n2, -g - n1 - 2 * n12 - n2, g - n1 - 2 * n12 - n2]) / 2
+        U = np.array([
+            [0,    0,  -2 * n12,    2 * n12],
+            [2 * g,   0,  0,  0],
+            [0, 0,  g - n1 + n2,    g + n1 - n2],
+            [0, 2 * g,    0,  0]]) / 2 / g
+
+        Um1 = np.array([
+            [0,    2 * n12,  0,    0],
+            [0,   0,  0,  2 * n12],
+            [-g - n1 + n2, 0,  2 * n12,    0],
+            [g - n1 + n2,   0,    2 * n12,  0]]) / 2 / n12
+
+        # lambdas_test, U_test = np.linalg.eig(A)
+
+        def cj(j):
+            return exp(lambdas[j - 1] * dt)
+
+        def Q(i, j):
+            r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] +
+                                           lambdas[j - 1]) / (cj(j) - ck) / (cj(i) - 1 / ck)
+            return r if i != j else r.real
+
+        # %% Get Gamma covariance matrix
+        G1 = np.array([
+            [2 * D1 * Q(1, 1), 0,  0,  0],
+            [0, 2 * D2 * Q(2, 2),  0,  0],
+            [0, 0,  (D1 * (g + n1 - n2) + D2 * (g - n1 + n2)) *
+             Q(3, 3) / g,  -(D1 - D2) * (g + n1 - n2) * Q(3, 4) / g],
+            [0, 0,  -(D1 - D2) * (g - n1 + n2) * Q(4, 3) / g,  (D1 * (g - n1 + n2) + D2 * (g + n1 - n2)) * Q(4, 4) / g]])
+        Gfull = 2 * dt**2 * (1 + np.sin(2 * np.pi * k / M)) * U @ G1 @ Um1
+
+        # print('U', U)
+        # print('Um1', Um1)
+
+    else:
+        # g = np.sqrt((n1 - n2)**2 + 2 * n12**2)
+        lambdas = np.array([-n1, -n1, -n2, -n2])
+
+        def cj(j):
+            return exp(lambdas[j - 1] * dt)
+
+        def Q(i, j):
+            r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] +
+                                           lambdas[j - 1]) / (cj(j) - ck) / (cj(i) - 1 / ck)
+            return r if i != j else r.real
+
+        # %% Get Gamma covariance matrix
+        G1 = np.array([
+            [2 * D1 * Q(1, 1), 0,  0,  0],
+            [0, 2 * D1 * Q(2, 2),  0,  0],
+            [0, 0,  2 * D2 * Q(3, 3), 0],
+            [0, 0, 0, 2 * D2 * Q(4, 4)]])
+        Gfull = 2 * dt**2 * (1 + np.sin(2 * np.pi * k / M)) * G1
+
+    Cfull = np.zeros((4, 4)) if k > 0 else G
+
+    G = Gfull[:2, :2]
+    C = Cfull[:2, :2]
+
+    P = G.conj() - C.conj().T @ np.linalg.inv(G) @ C
+
+    # print(f'n12={n12}, full G={G}')
+    verbose = False
+    if verbose:
+        print(f'k={k}, n12={n12}')
+        print(f'det(full G)={np.linalg.det(Gfull)}')
+        print(f'eig(full G)={np.linalg.eigvals(Gfull)}')
+        print('Gfull ', Gfull)
+        # print('Hermitian: ',  G - G.conj().T)
+        print('U=', U)
+        print('Um1=', Um1)
+        print('U* Um1', U @ Um1)
+
+        print(f'det(G)={np.linalg.det(G)}')
+        print(f'eig(G)={np.linalg.eigvals(G)}')
+        print(f'det(G1)={np.linalg.det(G1)}')
+        print(f'eig(G1)={np.linalg.eigvals(G1)}')
+        print(f'G1={G1}')
+        # if k == 2:
+        raise RuntimeError('stop')
+
+    # Make some checks. Do not check all k because may be heavy
+    if k == 1:
+        # G is a non-negative definite matrix
+        det_G = np.linalg.det(G)
+        if det_G < 0:
+            logging.warning(
+                f'Gamma matrix determinant is negative ({det_G} < 0). It is likely there is a problem in the code')
+        # P is a non-negative positive definite matrix
+        det_P = np.linalg.det(P)
+        if det_P < 0:
+            logging.warning(
+                f'P matrix determinant is negative ({det_P} < 0). It is likely there is a problem in the code')
+
+    # print('params: D1, D2, n1, n2, n12', D1, D2, n1, n2, n12)
+    # print('lambs', lambdas)
+    #
+    # # print('U true', U_test)
+    #
+    # print('G', G)
+    # print('C', C)
+
+    # Um1 = inv(U)
+    # print('lambs', lambdas)
+    # print('Adiag', Um1 @ A @ U)
+
+    # print('B', dRk)
+
+    # Calculate the covariance matrix normalized to (M dt^2)
+
+    # Gl = [M * dt**2 / 2 * (1 + ck)**2 * (1 - cj(j)**2) / (cj(j) - ck) / (1 - cj(j) * ck) / lambdas[j]
+    #       for j in range(4)]
+    # # print('diag', G)
+    # G = np.sum([b[l, l] * U @ np.diag(Gl) @ Um1 for l in range(4)], axis=2)
+
+    # print('Gfull', G)
+
+    # print('bl * blT', b[:, 0, np.newaxis] @ b[:, 0, np.newaxis].T)
+    # raise RuntimeError()
+
+    # C = np.zeros((2, 2))
+    # print('G', G)
+
+    # print(f'n12={n12}, eig(G)={np.linalg.eigvals(G)}')
+    # print(f'n12={n12}, check G Hermitian: {G - G.conj().T}')
+    # print(f'n12={n12}, det(P)={np.linalg.det(P)}')
+
+    Q = np.block([[G, C], [C.conj(), G.conj()]])
+    Q_inv = np.linalg.inv(Q)
+
+    # dRk = dRk / (np.sqrt(M) * dt)
+    vec_right = np.vstack([dRk, dRk.conj()])
+    vec_left = np.hstack([dRk.conj().T, dRk.T])
+    # print('dRk', dRk)
+    # print('vl', vec_left)
+    # print('vr', vec_right)
+
+    # Calculate the log-likelihood
+    d = 2
+    ln_prob = (-d * log(pi) - 1 / 2 * log(np.linalg.det(G)) - 1 / 2 * log(np.linalg.det(P))
+               - 1 / 2 * vec_left @ Q_inv @ vec_right)
+
+    if ln_prob.shape != (1, 1):
+        logging.warning(
+            f'Log-likelihood matrix dimensions are incorrect. Check the supplied arrays. Got: {ln_prob}')
+    ln_prob = ln_prob[0, 0]
+
+    if abs(ln_prob.imag) > ATOL:
+        logging.warn(
+            'The imaginary part of the real likelihood is larger than tolerance. There might be an error. Result: {ln_prob}'.format(ln_prob=ln_prob))
+    ln_prob = ln_prob.real
+
+    # print('ln_prob: ', ln_prob)
+    # raise RuntimeError('stop')
+
+    # # print(sigma2s)
+    # try:
+    #     ln_prob = ln_pdf_chi_squared_sum(z=z, sigma2s=sigma2s(alpha, k))
+    # except Exception as e:
+    #     print(
+    #         f'Unable to calculate the pdf of a chi-squared sum. Alpha (component) and row: alpha={alpha}, k={k}')
+    #     print('The corresponding full sigma2 matrix:')
+    #     print(get_sigma2_matrix_func(D1, D2, n1, n2, n12, M, dt, alpha=None)(k))
+    #     raise e
+    #
+    # # print('prob: ', prob)
+    # # print('lambs: ', lambdas)
+    # # prob
+    return ln_prob
+
+
+def get_ln_likelihood_func_2_particles_x_link(ks, M, dt, dRks=None):
     """
     Returns a log_10 of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
     The likelihood is not normalized over these parameters.
 
-    Use alpha to specifythe coordinate for the likelihood:
-        alpha = 0 --- x1
-        alpha = 1 --- y1
-        alpha = [0,1] --- both x1 and y1
     """
     # if isinstance(alpha, int):
     #     alpha = [alpha]
 
+    # ind = 0
+    # k = ks[ind]
+    # print('new_lklh', new_likelihood_2_particles_x_link_one_point(
+    #     dRk=dRk[:, ind, np.newaxis], k=k, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0))
+
     def ln_lklh(D1, D2, n1, n2, n12):
-        ln_lklh_vals = []
-        if zs_x is not None:
-            ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
-                z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=0)
-                for z, k in zip(zs_x, ks)])
+        # ln_lklh_vals = []
+        # if zs_x is not None:
+        #     ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
+        #         z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=0)
+        #         for z, k in zip(zs_x, ks)])
+        # print('ks', ks)
+        # i = 0
+        # print('argstmp',
+        #       dRks[:, i, np.newaxis],
+        #       # ks[i],
+        #       # D1,
+        #       # D2,
+        #       # n1,
+        #       # n2,
+        #       # n12,
+        #       # M,
+        #       # dt)
+        #       )
 
-        if zs_y is not None:
-            ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
-                z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=1)
-                for z, k in zip(zs_y, ks)])
+        ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
+            dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
+            dt=dt) for i in range(len(ks))]
 
-        ln_lklh_val = np.sum(ln_lklh_vals)
+        # if zs_y is not None:
+        #     ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
+        #         z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=1)
+        #         for z, k in zip(zs_y, ks)])
+
+        test = False
+        if test:
+            ln_lklh_val = ln_lklh_vals[0]
+        else:
+            ln_lklh_val = np.sum(ln_lklh_vals)
+
+        # print('ln_lklh_val', ln_lklh_val)
+        # time.sleep(1)
 
         return ln_lklh_val
 
     return ln_lklh
 
 
-def get_ln_likelihood_func_no_link(ks, M, dt, zs_x=None, zs_y=None):
+def get_ln_likelihood_func_no_link(ks, M, dt, dRks=None):
     """
     Returns a log_10 of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
     The likelihood is not normalized over these parameters.
 
-    Use alpha to specifythe coordinate for the likelihood:
-        alpha = 0 --- x1
-        alpha = 1 --- y1
-        alpha = [0,1] --- both x1 and y1
     """
     D2 = 1
     n2 = 1
     n12 = 0
 
     def ln_lklh(D1, n1):
-        ln_lklh_vals = []
-        if zs_x is not None:
-            ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
-                z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=0)
-                for z, k in zip(zs_x, ks)])
-
-        if zs_y is not None:
-            ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
-                z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=1)
-                for z, k in zip(zs_y, ks)])
+        # ln_lklh_vals = []
+        # if zs_x is not None:
+        #     ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
+        #         z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=0)
+        #         for z, k in zip(zs_x, ks)])
+        #
+        # if zs_y is not None:
+        #     ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
+        #         z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=1)
+        #         for z, k in zip(zs_y, ks)])
+        ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
+            dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
+            dt=dt) for i in range(len(ks))]
 
         ln_lklh_val = np.sum(ln_lklh_vals)
 
         return ln_lklh_val
 
     return ln_lklh
+
+
+# def new_get_ln_likelihood_func_no_link(ks, M, dt, zs_x=None, zs_y=None):
+#     """
+#     Returns a log of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
+#     The likelihood is not normalized over these parameters.
+#     """
+#     D2 = 1
+#     n2 = 1
+#     n12 = 0
+#
+#     def ln_lklh(D1, n1):
+#         ln_lklh_vals = []
+#         if zs_x is not None:
+#             ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
+#                 z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=0)
+#                 for z, k in zip(zs_x, ks)])
+#
+#         if zs_y is not None:
+#             ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
+#                 z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=1)
+#                 for z, k in zip(zs_y, ks)])
+#
+#         ln_lklh_val = np.sum(ln_lklh_vals)
+#
+#         return ln_lklh_val
+#
+#     return ln_lklh
 
 
 def estimate_evidence_integral(ln_posterior, MLE, lims=None):
@@ -532,108 +793,79 @@ def get_ln_prior_func():
 
     Also provide a sampler to sample from the prior.
     """
-    # Diffusivities
-    # Inverse-gamma distribution. Set mode to scale
-    D_interval = interval = [0.01, 10]
-    # tau = 1 / 100
-    # D_scale = 0.5
-    alpha = 1
+    ################# Diffusivities D1, D2 #################
+    D_right = 5
+    tau = 1e-2
+    k = 2
 
-    # beta = (alpha + 1) * D_scale
-    def ln_func(x, beta):
-        return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(x) - beta / x
+    def eqn(z):
+        # Condition: decrease on the right border as compared to mode is tau
+        return z * exp(1 - z) - tau
+    sol = root_scalar(eqn, bracket=[1, 1e5])
+    z = sol.root
+    theta = D_right / z
 
-    def eqn(beta):
-        # Condition: equal value at interval borders
-        return ln_func(interval[0], beta) - ln_func(interval[1], beta)
-
-    sol = root_scalar(eqn, bracket=[1e-7, 1e5])
-    beta = sol.root
-
-    # def eqn(beta, x1):
-    #     return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
-    #
-    # sol = root_scalar(eqn, bracket=[1e-7, 1], args=(D_interval[1]))
-    # beta = sol.root
+    # print('theta_n', theta)
+    # raise RuntimeError('stop')
 
     def ln_D_prior(D):
         """
-        Same prior for D1 and D2.
+        Gamma distribution
         """
-        # return -gammaln(a) - a * log(theta) + (a - 1) * log(D) - D / theta # gamma distribution
-
-        # inverse-Gamma
-        return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(D) - beta / D
-
-        # Log-normal distribution defining an interval
-        # return -log(D) - 1 / 2 * log(2 * pi * sigma2_D) - (log(D) - mu_D)**2 / 2 / sigma2_D
+        return - gammaln(k) - k * log(theta) + (k - 1) * log(D) - D / theta
 
     def cdf_D_prior(D):
         if D > 0:
-            # return gammainc(a, D / theta) # gamma
-            return gammaincc(alpha, beta / D)  # inverse-gamma
-            # log-normal
-            # return 1 / 2 * (1 + erf((log(D) - mu_D) / np.sqrt(2 * sigma2_D)))
+            return gammainc(k, D / theta)  # gamma
         else:
             return 0
 
-    # Localization strength.
-    # Inverse gamma. Set mode to scale
-    n_interval = interval = [0.01, 100]
-    # tau = 1 / 100
-    # n_scale = 1
-    alpha = 1
-    # beta = (alpha + 1) * D_scale
+    ################# Localization strength n1, n2 #################
+    # Gamma distribution. Set scale by right boundary
+    n_right = 100
+    tau = 1e-2
+    k = 2
 
-    def ln_func(x, beta):
-        return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(x) - beta / x
+    def eqn(z):
+        # Condition: decrease on the right border as compared to mode is tau
+        return z * exp(1 - z) - tau
+    sol = root_scalar(eqn, bracket=[1, 1e5])
+    z = sol.root
+    theta = n_right / z
 
-    def eqn(beta):
-        # Condition: equal value at interval borders
-        return ln_func(interval[0], beta) - ln_func(interval[1], beta)
-    sol = root_scalar(eqn, bracket=[1e-7, 1e5])
-    beta = sol.root
-
-    # def eqn(beta, x1):
-    #     return (-alpha - 1) * log(x1 * (alpha + 1) / beta) + alpha + 1 - beta / x1 - log(tau)
-    #
-    # sol = root_scalar(eqn, bracket=[1e-7, 10], args=(n_interval[1]))
-    # beta = sol.root
-    # # print('beta_n', beta)
+    # print('theta_n', theta)
+    # raise RuntimeError('stop')
 
     def ln_n_prior(n):
         """
-        An inverse-gamma distribution to have long tails and in theory allow stronger localization.
+        Gamma distribution
         """
-        return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(n) - beta / n
+        # return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(n) - beta / n
 
         # return -log(n) - 1 / 2 * log(2 * pi * sigma2_n) - (log(n) - mu_n)**2 / 2 / sigma2_n
         # # inverse gamma distribution
-        # return a * log(beta) - gammaln(a) - (a + 1) * log(n) - beta / n
+        return - gammaln(k) - k * log(theta) + (k - 1) * log(n) - n / theta
 
     def cdf_n_prior(n):
         # return 1 / 2 * (1 + erf((log(n) - mu_n) / np.sqrt(2 * sigma2_n)))
 
         if n > 0:
-            # return gammainc(a, D / theta) # gamma
-            return gammaincc(alpha, beta / n)  # inverse-gamma
+            return gammainc(k, n / theta)  # gamma
+            # return gammaincc(alpha, beta / n)  # inverse-gamma
         else:
             return 0
 
-    # Gamma distribution. Set mode to scale
-    n12_interval = [1e-5, 1e3]
-    # tau = 1 / 100
+    ################# Link strength n12 #################
+    n12_right = 100
+    tau = 1e-2
     k = 2
-    # theta = n_scale / (k - 1)
 
-    def ln_func(x, theta):
-        return -gammaln(k) - k * log(theta) + (k - 1) * log(x) - x / theta
-
-    def eqn(theta):
-        return ln_func(interval[0], theta) - ln_func(interval[1], theta)
-
-    sol = root_scalar(eqn, bracket=[1e-7, 1e5])
-    theta = sol.root
+    def eqn(z):
+        # Condition: decrease on the right border as compared to mode is tau
+        return z * exp(1 - z) - tau
+    sol = root_scalar(eqn, bracket=[1, 1e5])
+    z = sol.root
+    theta = n12_right / z
 
     # if tau == 1 / 100:
     #     a = 7.638352067993813
@@ -707,7 +939,10 @@ def get_ln_prior_func():
     return ln_prior, sample_from_the_prior
 
 
-def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=None, verbose=False, method='BFGS'):
+def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, dRks=None, start_point=None, verbose=False,
+            method='BFGS'
+            # method='Nelder-Mead'
+            ):
     """
     Locate the MLE of the posterior. Estimate the evidence integral through Laplace approximation. Since the parameters have different scales, the search is conducted in the log space of the parameters.
 
@@ -722,7 +957,6 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     # Based on 99% chance estimate in a simple binomial model.
 
     # tries = 2 + 1 if not link else 5 + 1  # 80 + 1
-    tries = 3
 
     # tries = 2 + 1 if not link else 10 + 1
     # tries = 2 + 1
@@ -753,12 +987,12 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     # Choose the appropriate likelihood
     if link:
         ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
-            ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
+            ks=ks, M=M, dt=dt, dRks=dRks)
 
         start_point_est = {'D1': 1, 'n1': 1e3, 'D2': 1, 'n2': 1e3, 'n12': 1e3}
     else:
         ln_lklh_func = get_ln_likelihood_func_no_link(
-            ks=ks, zs_x=zs_x, zs_y=zs_y, M=M, dt=dt)
+            ks=ks, M=M, dt=dt, dRks=dRks)
 
         start_point_est = {'D1': 1, 'n1': 1e3}
 
@@ -923,17 +1157,6 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         #     start_point = to_dict(*mins[0][2].x)
         #     print('On the last try, retry from the best guess so far:\n', start_point)
         #
-        #     # Also estimate how many of the best values are close
-        #     # frac is the fraction of tries that the best minimum was found if there were no retrials from the best
-        #     atol = tol
-        #     fun_vals = [min[0] for min in mins]
-        #     diffs = np.array([np.abs(fun_vals[i] - fun_vals[0]) for i in range(1, len(fun_vals))])
-        #     # add 1 to count the value itself
-        #     times_best_found = np.sum(diffs < atol) + 1
-        #     real_tries = tries - 1  # subtract 1 because repeating from the best point
-        #     # Store the value in a file. Remember there is always at least 1 because we recalculate the best point
-        #     frac = times_best_found / real_tries
-        #     save_number_of_close_values(link, times_best_found, real_tries, frac)
 
         else:  # sample from the prior
             start_point = sample_from_the_prior(link)
@@ -982,6 +1205,17 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     print(f'\nFound the following (minimi, ln_evidence) in {tries} tries:\n', [
           (min[0], min[1]) for min in mins])
 
+    # Estimate how many of the best values are close
+    atol = tol
+    fun_vals = [min[0] for min in mins]
+    diffs = np.array([np.abs(fun_vals[i] - fun_vals[0]) for i in range(1, len(fun_vals))])
+    # add 1 to count the value itself
+    times_best_found = np.sum(diffs < atol) + 1
+    # Store the value in a file.
+    # frac is the fraction of tries that the best minimum was found
+    frac = times_best_found / tries
+    save_number_of_close_values(link, times_best_found, tries, frac)
+
     # if np.isnan(ln_true_evidence):
     # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
     success = False
@@ -1005,25 +1239,37 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
     #     print('Rerunning BFGS on the best min:\n',
     #           minimize(fnc, min.x, tol=1e-5, method='BFGS',
     #                    options=options_BFGS))
-    #     plt.figure(6 + int(link), clear=True)
-    #
-    #     def plot_func(xs, dim):
-    #         out = []
-    #         for x in xs:
-    #             args = min.x.copy()
-    #             args[dim] = x
-    #             out.append(minimize_me(args))
-    #         return out
-    #     # step = 0.1
-    #     for dim in range(len(names)):
-    #         xs = np.linspace(np.min([min.x[dim] * 0.1, 0.1]),
-    #                          np.max([min.x[dim] * 5, 1]), num=100, endpoint=True)
-    #         plt.plot(xs, plot_func(xs, dim), label=names[dim])
-    #
-    #     plt.legend()
-    #     plt.show(block=False)
-    #     import time
-    #     time.sleep(1)
+
+    if plot:
+        print('Plotting...')
+        plt.figure(6 + int(link), clear=True)
+
+        def plot_func(xs, dim):
+            out = []
+            for x in xs:
+                args = min.x.copy()
+                args[dim] = x
+                out.append(minimize_me(args))
+            return out
+        # step = 0.1
+        for dim in range(len(names)):
+            x_d = min.x[dim]
+            xs = np.linspace(np.min([x_d * 0.1, 0.1]),
+                             np.max([x_d * 20, 1]), num=100, endpoint=True)
+            plt.plot(xs, plot_func(xs, dim), label=names[dim], color=color_sequence[dim])
+            plt.scatter(x_d, plot_func([x_d], dim)[0], color=color_sequence[dim])
+
+        plt.legend()
+        plt.show(block=False)
+        import time
+        time.sleep(3)
+        print('Plotting... done!')
+
+        if link:
+            # print(M, link)
+            # if link and M == 100:
+            #     raise RuntimeError('stop')
+            raise RuntimeError('Stop after plot')
     # else:
     #     ln_model_evidence = ln_true_evidence
 
@@ -1039,7 +1285,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, start_point=No
         try:
             lam, v = np.linalg.eig(np.linalg.inv(min.hess_inv))
             # print(f'Eigenvalues and eigenvectors of the Hessian for the MLE:\n', )
-            print('Eigenvaluesof the Hessian: ', lam)
+            print('Eigenvalues of the Hessian: ', lam)
             print('Eigenvectors: ', v)
         except Exception:
             pass

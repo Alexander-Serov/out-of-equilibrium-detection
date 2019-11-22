@@ -13,6 +13,7 @@ import time
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from filelock import FileLock
 from scipy.optimize import root, root_scalar
 from scipy.special import gamma
@@ -26,6 +27,9 @@ else:
     data_folder = 'data'
 
 MLE_guess_file = 'MLE_guesses.pyc'
+stat_filename = 'statistics.dat'
+
+LOCK_TIMEOUT = 3  # s
 
 
 def get_rotation_matrix(dr):
@@ -75,7 +79,7 @@ def _hash_me(*args):
 
 
 def hash_from_dictionary(true_parameters, dim=2):
-    args = [true_parameters[key] for key in 'D1 D2 n1 n2 n12 T dt angle L M'.split()]
+    args = [true_parameters[key] for key in 'D1 D2 n1 n2 n12 dt angle L M'.split()]
     args_no_trial = copy.deepcopy(args)
 
     # Allow to have multiple hashes for the same parameters
@@ -177,11 +181,13 @@ def stopwatch_dec(func):
     return wrapper
 
 
-def get_cluster_args_string(D1, D2, n1, n2, n12, gamma, T, dt, angle, L, M, trial=0, recalculate=False, verbose=False):
-    args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g} --gamma={gamma:g} --T={T:g} --dt={dt:g} --angle={angle:f} --L={L:f} --trial={trial:d} --M={M}'.format(
-        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, T=T, dt=dt, angle=angle, L=L, trial=trial, M=M)
-    if recalculate:
-        args_string += ' --recalculate'
+def get_cluster_args_string(D1, D2, n1, n2, n12, gamma, dt, angle, L, M, trial=0, recalculate_trajectory=False, recalculate_BF=False, verbose=False):
+    args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g} --gamma={gamma:g} --dt={dt:g} --angle={angle:f} --L={L:f} --trial={trial:d} --M={M}'.format(
+        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L, trial=trial, M=M)
+    if recalculate_trajectory:
+        args_string += ' --recalculate_trajectory'
+    if recalculate_BF:
+        args_string += ' --recalculate_BF'
     if verbose:
         args_string += ' --verbose'
     args_string += '\n'
@@ -202,7 +208,7 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
     success = True
     filename = MLE_guess_file
     lock_file = filename + '.lock'
-    lock = FileLock(lock_file, timeout=1)
+    lock = FileLock(lock_file, timeout=LOCK_TIMEOUT)
 
     if hash_no_trial is None:
         return False
@@ -253,7 +259,7 @@ def load_all_MLE_guesses():
     MLE_guesses = {}
     filename = MLE_guess_file
     lock_file = filename + '.lock'
-    lock = FileLock(lock_file, timeout=1)
+    lock = FileLock(lock_file, timeout=LOCK_TIMEOUT)
 
     if os.path.exists(filename):
         try:
@@ -307,20 +313,20 @@ def load_MLE_guess(hash_no_trial, link):
 def save_number_of_close_values(link, val, tries, frac):
     """
     """
-    filename = 'statistics.dat'
-    lock_file = filename + '.lock'
-    lock = FileLock(lock_file, timeout=1)
 
-    if not os.path.exists(filename):
+    lock_file = stat_filename + '.lock'
+    lock = FileLock(lock_file, timeout=LOCK_TIMEOUT)
+
+    if not os.path.exists(stat_filename):
         with lock:
-            with open(filename, 'w') as file:
+            with open(stat_filename, 'w') as file:
                 strng = f'Link presence\tNo of similar function values in MLE search results\tTries\tFraction\n'
                 file.write(strng)
 
     # Save to file
     try:
         with lock:
-            with open(filename, 'a') as file:
+            with open(stat_filename, 'a') as file:
                 strng = f'{link:d}\t{val:d}\t{tries:d}\t{frac:.3f}\n'
                 file.write(strng)
     except:
@@ -411,6 +417,32 @@ def find_inverse_gamma_function_scale(left, tau, alpha):
         return sol.root
     else:
         return np.nan
+
+
+def calculate_min_number_of_tries_with_a_binomial_model(stat_filename=stat_filename):
+    """
+    The function reads and analyzed the statistics.dat file.
+    We assume a binomial model of finding or not finding the maximum in cases where several outcomes are possible (p<1).
+    Cases with all the same values (p=1) were filtered out.
+    """
+    conf_level = 0.99
+
+    if not os.path.exists(stat_filename):
+        print('{} not found!'.format(stat_filename))
+        return 1
+
+    stats = pd.read_csv(stat_filename, sep='\t')
+    # print(stats)
+    for link in [0, 1]:
+        filtered = stats[(stats['Link presence'] == link) & (stats['Fraction'] < 1)].sum(axis=0)
+        if len(filtered) > 0:
+            p = filtered['No of similar function values in MLE search results'] / filtered['Tries']
+            min_N = np.log(1 - conf_level) / np.log(1 - p)
+            print(
+                f'Minimum number of tries to find a minimum with {conf_level*100:.0f}% with link={link} is {min_N:.1f}')
+        else:
+            print(f'No data satisfying the criteria for link={link}')
+    return 0
 
 
 # %% Test

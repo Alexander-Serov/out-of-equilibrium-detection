@@ -34,7 +34,8 @@ from likelihood import (estimate_sigma2_matrix,
 from plot import (plot_diffusivity_dependence, plot_link_strength_dependence,
                   plot_localization_dependence, plot_periodogram)
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
-from support import get_rotation_matrix, locally_rotate_a_vector
+from support import (calculate_min_number_of_tries_with_a_binomial_model,
+                     get_rotation_matrix, locally_rotate_a_vector)
 
 #  Constants
 D2 = 0.4  # um^2/s
@@ -48,7 +49,8 @@ gamma = 1e-8    # viscous drag, in kg/s
 L = 0.5
 angle = 0
 trial = 0   # the trial number
-recalculate = False
+
+arguments_file = 'arguments.dat'
 
 
 k1, k2, k12 = np.array([n1, n2, n12]) * gamma
@@ -59,23 +61,34 @@ true_parameters = {name: val for name, val in zip(
     ('D1 D2 n1 n2 n12 gamma T dt angle L trial M'.split()),
     (D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M))}
 
+
 # np.log(0.0167)
 # np.log(10)
 # np.log(2 * np.pi)
 # np.log(0.2)
 # print(f'A*dt scale: {np.array([n1, n2, n12]) * dt}')
-np.log10(10)
+p = 6438 / 7150
+print(p)
+np.log(0.01) / np.log(1 - p)
+
 # %%
+recalculate_trajectory = 0
+recalculate_BF = 1
+cluster = 0
+
+if os.path.exists(arguments_file):
+    os.unlink(arguments_file)
+
+
 lg_BF_vals = plot_link_strength_dependence(
-    trials=500, n12_range=[1e-1, 1e3], verbose=False, recalculate=False, dry_run=True)
+    trials=20, n12_range=[1e-1, 1e2], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
 
-# %%
 lg_BF_vals = plot_diffusivity_dependence(
-    trials=200, D1_range=[0.01, 10], verbose=False, recalculate=False, dry_run=False)
+    trials=200, D1_range=[1e-2, 5], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
 
-# %%
+
 lg_BF_vals = plot_localization_dependence(
-    trials=100, n_range=[0.3, 100], verbose=False, recalculate=False, dry_run=False)
+    trials=200, n_range=[0.3, 100], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
 
 # %%
 #
@@ -84,8 +97,9 @@ lg_BF_vals = plot_localization_dependence(
 #     t=t, dR=dR, true_parameters=true_parameters, hash=hash, recalculate=False,  plot=False)
 # print('lg Bayes factor: ', lg_bayes_factor)
 
+calculate_min_number_of_tries_with_a_binomial_model()
 
-# %%
+
 1
 
 # # %% Separate into coordinates
@@ -279,3 +293,14 @@ print('theta', theta)
 print('Borders', [np.exp(ln_func(x, theta)) for x in interval])
 eqn(1)
 457 / 34 / 100 * np.array([366, 9.4, 66, 4])
+
+
+s = 3 + 1j
+s
+s.imag
+
+s2 = np.zeros((2, 2))
+s2.conj().T
+s2.T
+s2.H
+s2[:, 0, np.newaxis]

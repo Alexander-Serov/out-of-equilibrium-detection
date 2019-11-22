@@ -20,10 +20,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from numpy import cos, exp, sin
-from tqdm import tqdm, trange
 
 from stopwatch import stopwatch
 from support import hash_from_dictionary, load_data, save_data
+
+# from tqdm import tqdm, trange
 
 
 def simulate_2_confined_particles_with_fixed_angle_bond(true_parameters, plot=True, recalculate=False, save_figure=True, file=r'.\trajectory.dat', seed=None):
@@ -42,8 +43,9 @@ def simulate_2_confined_particles_with_fixed_angle_bond(true_parameters, plot=Tr
 
     # Load parameters
     # hash_sequence =
-    D1, D2, n1, n2, n12, T, dt, angle, L = [true_parameters[key]
-                                            for key in 'D1 D2 n1 n2 n12 T dt angle L'.split()]
+    D1, D2, n1, n2, n12, M, dt, angle, L = [true_parameters[key]
+                                            for key in 'D1 D2 n1 n2 n12 M dt angle L'.split()]
+    N = M
 
     # % Constants
     # kB = 1.38e-11  # kg*um^2/s^2/K
@@ -63,7 +65,6 @@ def simulate_2_confined_particles_with_fixed_angle_bond(true_parameters, plot=Tr
 
     # Hash the parameters to be able to reload
     hash, _ = hash_from_dictionary(dim=2, true_parameters=true_parameters)
-    filename = 'data/data_' + hash + '.pyc'
 
     # Reload if requested
     if not recalculate:
@@ -101,7 +102,8 @@ def simulate_2_confined_particles_with_fixed_angle_bond(true_parameters, plot=Tr
 
     # Choose dt and N (number of jumps)
     # dt = 1e-2
-    N = np.ceil(T / dt).astype(int)
+    # N = np.ceil(T / dt).astype(int)
+    T = dt * N
     t = np.arange(N + 1) * dt
 
     # R0 = np.transpose([np.hstack([r10, r20])])
@@ -144,7 +146,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(true_parameters, plot=Tr
             diag_return_force_integrals[i] = (np.exp(l * dt) - 1) / l
 
     # Iterate over steps
-    for i in trange(N):
+    for i in range(N):
         R_next = (
             U @ np.diag(np.exp(lambdas * dt)) @ Um1 @ R[:, i, None]
             + U @ np.diag(diag_return_force_integrals) @ Um1 @ a

@@ -8,7 +8,7 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy import log
-from scipy.fftpack import fft
+from scipy.fftpack import fft, ifft
 
 from likelihood import get_MLE
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
@@ -56,7 +56,7 @@ def calculate_periodogram(dX1, dY1, dt, D1, D2, dk=10, plot=True):
     return PX, PY, PX_norm, PY_norm, modes
 
 
-def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=False, plot=False, verbose=False):
+def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=False, plot=False, verbose=False, true_args=None, cluster=False):
     """
     Calculate log10 Bayes factor for the presence of the link between 2 particles.
     """
@@ -73,6 +73,7 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
     dict_data, loaded = load_data(hash)
     # print(loaded, dict_data)
     # return
+    # print(recalculate)
     if not recalculate and 'lg_B' in dict_data.keys():
         if not np.isnan(dict_data['lg_B']):
             lg_bayes_factor, ln_evidence_with_link, ln_evidence_free = [
@@ -80,16 +81,23 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
 
             # print('Bayes factor values reloaded.')
 
-            return lg_bayes_factor, ln_evidence_with_link, ln_evidence_free
+            return lg_bayes_factor, ln_evidence_with_link, ln_evidence_free, loaded
         else:
             print('Loaded lg_B = NaN. Recalculating')
+
     # else:
     #     print('lg_B not found in saved file, or recalculation was requested')
     #     print('Details:', dict_data)
 
+    if cluster:
+        return np.nan, np.nan, np.nan, False
+    print('\nPerforming calculations with parameters: ', true_args)
+
     # Calculate the periodogram
     PX, PY, PX_norm, PY_norm, modes = calculate_periodogram(
         dX1=dX1, dY1=dY1, dt=dt, D1=D1, D2=D2, dk=10, plot=plot)
+    # short because it takes only the first 2 components X1, Y1
+    dRk_short = dt * fft(dR[:2, :])
 
     # Choose the k numbers that will be used to construct the likelihood
     #
@@ -104,12 +112,16 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
     ks_fit = fit_indices
     PX_fit = PX[fit_indices]
     PY_fit = PY[fit_indices]
+    dRks_fit = dRk_short[:, fit_indices]
+
+    # print('ks and dRks', ks_fit, dRks_fit)
+    # raise RuntimeError('Stop requested')
 
     # # %% MLE and evidence for the model without a link
     print('\nCalculating no-link evidence...')
     with stopwatch('No-link evidence calculation'):
         MLE_free, ln_evidence_free, max_free, success_free = get_MLE(
-            ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=False, verbose=verbose)
+            ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, dRks=dRks_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=False, verbose=verbose)
 
     if success_free:
         print('Done!', ln_evidence_free)
@@ -121,7 +133,7 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
         print('\nCalculating evidence with link...')
         with stopwatch('Evidence calculation with link'):
             MLE_link, ln_evidence_with_link, max_link, success_link = get_MLE(
-                ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=True, verbose=verbose)  # , start_point=true_parameters)
+                ks=ks_fit, zs_x=PX_fit, zs_y=PY_fit, dRks=dRks_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=True, verbose=verbose)  # , start_point=true_parameters)
         if success_link:
             print('Done!', ln_evidence_with_link)
         else:
@@ -150,7 +162,7 @@ def calculate_bayes_factor(t, dR, true_parameters, hash, dim=2, recalculate=Fals
     else:
         delete_data(hash)
 
-    return lg_bayes_factor, ln_evidence_with_link, ln_evidence_free
+    return lg_bayes_factor, ln_evidence_with_link, ln_evidence_free, True
 
 
 def average_over_modes(input, dk):
@@ -169,38 +181,40 @@ def average_over_modes(input, dk):
     return out, k_new
 
 
-def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M, seed=None, recalculate=False, verbose=False):
+def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, gamma, dt, angle, L, trial, M, seed=None, recalculate_trajectory=False, recalculate_BF=False, verbose=False, true_args=None, cluster=False):
     """
     The function combines trajectory simulation and bayes factor calculation to be able to delegate the task to a computing cluster.
     """
     true_parameters = {name: val for name, val in zip(
-        ('D1 D2 n1 n2 n12 gamma T dt angle L trial M'.split()),
-        (D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M))}
+        ('D1 D2 n1 n2 n12 gamma dt angle L trial M'.split()),
+        (D1, D2, n1, n2, n12, gamma, dt, angle, L, trial, M))}
     lg_BF_val, ln_evidence_with_link, ln_evidence_free = [np.nan] * 3
-    # success = False
-    tries = 4
 
-    for tr in range(tries):
-        t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
-            true_parameters=true_parameters, plot=False, save_figure=False, recalculate=recalculate, seed=seed)
-        # plt.show()
-        # break
+    hash, _ = hash_from_dictionary(dim=2, true_parameters=true_parameters)
 
-        # print('true ', true_parameters)
-        # Load the Bayes factor
-        lg_BF_val, ln_evidence_with_link, ln_evidence_free = calculate_bayes_factor(
-            t=t, dR=dR, true_parameters=true_parameters, hash=hash, recalculate=recalculate,  plot=False, verbose=verbose)
-        if np.abs(lg_BF_val) < max_abs_lg_B_per_M * M:
-            break
-        else:
-            print(
-                f'Resimulating trajectory because the final Bayes factor per point of trajectory {np.abs(lg_BF_val)/M} was higher than {max_abs_lg_B_per_M:3g} indicating failed MLE search. This was try {tr}/{tries-1}')
-            delete_data(hash)
+    # Send to cluster if any recalculation
+    if cluster and (recalculate_trajectory or recalculate_BF):
+        loaded = False
+        return lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded
 
-    return lg_BF_val, ln_evidence_with_link, ln_evidence_free
+    # Check if a trajectory exists
+    _, loaded = load_data(hash)
+    if cluster and not loaded:
+        loaded = False
+        return lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded
+
+    # Simulate trajectory
+    t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
+        true_parameters=true_parameters, plot=False, save_figure=False, recalculate=recalculate_trajectory, seed=seed)
+
+    # Calculate the Bayes factor
+    lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded = calculate_bayes_factor(
+        t=t, dR=dR, true_parameters=true_parameters, hash=hash, recalculate=recalculate_BF,  plot=False, verbose=verbose, true_args=true_args, cluster=cluster)
+
+    return lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded
 
 
-def simulate_and_calculate_Bayes_factor_terminal(arg_str):
+def simulate_and_calculate_Bayes_factor_terminal(arg_str, cluster=False):
     """
     Same as previous function, but first parses the input arguments string.
     Allows use in the terminal on the cluster.
@@ -213,18 +227,21 @@ def simulate_and_calculate_Bayes_factor_terminal(arg_str):
     arg_parser.add_argument('--n2', action='store', type=float, required=True)
     arg_parser.add_argument('--n12', action='store', type=float, required=True)
     arg_parser.add_argument('--gamma', action='store', type=float, required=True)
-    arg_parser.add_argument('--T', action='store', type=float, required=True)
     arg_parser.add_argument('--dt', action='store', type=float, required=True)
     arg_parser.add_argument('--angle', action='store', type=float, required=True)
     arg_parser.add_argument('--L', action='store', type=float, required=True)
     arg_parser.add_argument('--trial', action='store', type=int, required=True)
     arg_parser.add_argument('--M', action='store', type=int, required=True)
-    arg_parser.add_argument('--recalculate', dest='recalculate', action='store_true')
+    arg_parser.add_argument('--recalculate_trajectory',
+                            dest='recalculate_trajectory', action='store_true')
+    arg_parser.add_argument('--recalculate_BF', dest='recalculate_BF', action='store_true')
     arg_parser.add_argument('--verbose', dest='verbose', action='store_true')
     arg_parser.set_defaults(recalculate=False, verbose=False)
 
     # Read arguments
     args = arg_parser.parse_args(arg_str.split())
     # print(args)
+    # print(arg_str)
+    # print(args.recalculate_BF)
 
-    return simulate_and_calculate_Bayes_factor(D1=args.D1, D2=args.D2, n1=args.n1, n2=args.n2, n12=args.n12, gamma=args.gamma, T=args.T, dt=args.dt, angle=args.angle, L=args.L, trial=args.trial, M=args.M, recalculate=args.recalculate, verbose=args.verbose)
+    return simulate_and_calculate_Bayes_factor(D1=args.D1, D2=args.D2, n1=args.n1, n2=args.n2, n12=args.n12, gamma=args.gamma, dt=args.dt, angle=args.angle, L=args.L, trial=args.trial, M=args.M, recalculate_trajectory=args.recalculate_trajectory, recalculate_BF=args.recalculate_BF, verbose=args.verbose, true_args=arg_str, cluster=cluster)

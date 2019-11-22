@@ -3,6 +3,7 @@ Contains all plot functions
 """
 
 import os
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,7 +12,7 @@ from tqdm import tqdm, trange
 
 from calculate import (calculate_bayes_factor,
                        simulate_and_calculate_Bayes_factor_terminal)
-from constants import color_sequence
+from constants_main import color_sequence
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
 from support import get_cluster_args_string, set_figure_size
 
@@ -51,7 +52,7 @@ def plot_periodogram(modes_avg, PX_norm_avg, PY_norm_avg, D1, D2, M):
     fig.show()
 
 
-def plot_link_strength_dependence(trials=20, n12_range=[1e-1, 1e3], verbose=False, recalculate=False, dry_run=False):
+def plot_link_strength_dependence(trials=20, n12_range=[1e-1, 1e3], verbose=False, recalculate_trajectory=False, recalculate_BF=False, dry_run=False, cluster=False):
     """
     The function loads data for the specified parameters and plots the link strength dependence plot.
 
@@ -88,26 +89,23 @@ def plot_link_strength_dependence(trials=20, n12_range=[1e-1, 1e3], verbose=Fals
 
     # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
 
-    if dry_run:
-        if os.path.exists(arguments_file):
-            os.unlink(arguments_file)
-        file = open(arguments_file, 'a')
+    # if cluster:
+    # if os.path.exists(arguments_file):
+    #     os.unlink(arguments_file)
+    with open(arguments_file, 'a') as file:
 
-    lg_BF_vals = np.full([len(Ms), n12_points, trials], np.nan)
-    for trial in trange(trials, desc='Loading/calculating trial data'):
+        lg_BF_vals = np.full([len(Ms), n12_points, trials], np.nan)
+        for trial in trange(trials, desc='Loading/scheduling calculations'):
 
-        for ind_M, M in enumerate(Ms):
-            T = dt * M  # s
-            for ind_n12, n12 in enumerate(n12s):
-                args_string = get_cluster_args_string(
-                    D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, T=T, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate=recalculate)
-                if dry_run:
-                    file.write(args_string)
-
-                else:
-                    # print(args_string)
-                    lg_BF_vals[ind_M, ind_n12, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
-                        args_string)
+            for ind_M, M in enumerate(Ms):
+                for ind_n12, n12 in enumerate(n12s):
+                    args_string = get_cluster_args_string(
+                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma,  dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF)
+                    # print('Calculating with parameters: ', args_string)
+                    lg_BF_vals[ind_M, ind_n12, trial], ln_evidence_with_link, ln_evidence_free, loaded = simulate_and_calculate_Bayes_factor_terminal(
+                        args_string, cluster=cluster)
+                    if cluster and not loaded:
+                        file.write(args_string)
 
             # print('Iteration ', i)
             # true_parameters = {name: val for name, val in zip(
@@ -122,12 +120,9 @@ def plot_link_strength_dependence(trials=20, n12_range=[1e-1, 1e3], verbose=Fals
             # calculate_bayes_factor(
             #     t=t, dR=dR, true_parameters=true_parameters, hash=hash, recalculate=recalculate,  plot=False, verbose=verbose)
 
-    if dry_run:
-        file.close()
-        print('Dry run finished. Arguments file created')
-        if verbose:
-            print('Warning: verbose was active')
-        return np.nan
+    if cluster and verbose:
+        print('Warning: verbose was active')
+        # return np.nan
 
     # print(lg_BF_vals)
 
@@ -188,7 +183,7 @@ def plot_link_strength_dependence(trials=20, n12_range=[1e-1, 1e3], verbose=Fals
     return lg_BF_vals
 
 
-def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False, recalculate=False, dry_run=False):
+def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False, recalculate_trajectory=False, recalculate_BF=False, dry_run=False, cluster=False):
     """
     The function loads data for the specified parameters and plots the diffusivity dependence plot.
 
@@ -227,37 +222,30 @@ def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False, r
 
     # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
 
-    if dry_run:
-        if os.path.exists(arguments_file):
-            os.unlink(arguments_file)
-        file = open(arguments_file, 'a')
+    # if dry_run:
+    #     if os.path.exists(arguments_file):
+    #         os.unlink(arguments_file)
+    with open(arguments_file, 'a') as file:
 
-    lg_BF_vals = np.full([len(Ms), D1_points, trials], np.nan)
+        lg_BF_vals = np.full([len(Ms), D1_points, trials], np.nan)
 
-    for trial in trange(trials, desc='Loading/calculating trial data'):
-        # if seed is not None:
-        #     trial_seed = seed + trial
-        # else:
-        #     trial_seed = None
-        for ind_M, M in enumerate(Ms):
-            T = dt * M  # s
-            for ind_D1, D1 in enumerate(D1s):
-                args_string = get_cluster_args_string(
-                    D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, T=T, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate=recalculate)
-                if dry_run:
-                    file.write(args_string)
+        for trial in trange(trials, desc='Loading/scheduling calculations'):
+            # if seed is not None:
+            #     trial_seed = seed + trial
+            # else:
+            #     trial_seed = None
+            for ind_M, M in enumerate(Ms):
+                for ind_D1, D1 in enumerate(D1s):
+                    args_string = get_cluster_args_string(
+                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF)
+                    lg_BF_vals[ind_M, ind_D1, trial], ln_evidence_with_link, ln_evidence_free, loaded = simulate_and_calculate_Bayes_factor_terminal(
+                        args_string, cluster=cluster)
+                    if cluster and not loaded:
+                        file.write(args_string)
 
-                else:
-                    # print(args_string)
-                    lg_BF_vals[ind_M, ind_D1, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
-                        args_string)
-
-    if dry_run:
-        file.close()
-        print('Dry run finished. Arguments file created')
-        if verbose:
+        if cluster and verbose:
             print('Warning: verbose was active')
-        return np.nan
+            # return np.nan
 
     # print(lg_BF_vals)
 
@@ -274,7 +262,7 @@ def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False, r
         # print('CIs: ', np.log10(CIs))
 
     # %% Actual plotting
-    fig = set_figure_size(num=3, rows=rows, page_width_frac=page_width_frac,
+    fig = set_figure_size(num=4, rows=rows, page_width_frac=page_width_frac,
                           height_factor=height_factor)
 
     # Confidence intervals
@@ -317,7 +305,7 @@ def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False, r
     return lg_BF_vals
 
 
-def plot_localization_dependence(trials=20, n_range=[1e-2, 100], particle=1, verbose=False, recalculate=False, dry_run=False):
+def plot_localization_dependence(trials=20, n_range=[1e-2, 100], particle=1, verbose=False, recalculate_trajectory=False, recalculate_BF=False, dry_run=False, cluster=False):
     """
     The function loads data for the specified parameters and makes the plot.
 
@@ -360,51 +348,57 @@ def plot_localization_dependence(trials=20, n_range=[1e-2, 100], particle=1, ver
 
     arguments_file = 'arguments.dat'
 
-    if dry_run:
-        if os.path.exists(arguments_file):
-            os.unlink(arguments_file)
-        file = open(arguments_file, 'a')
+    with open(arguments_file, 'a') as file:
 
-    lg_BF_vals = np.full([len(Ms), n_points, trials], np.nan)
+        lg_BF_vals = np.full([len(Ms), n_points, trials], np.nan)
 
-    for trial in trange(trials, desc='Loading/calculating trial data'):
-        # if seed is not None:
-        #     trial_seed = seed + trial
-        # else:
-        #     trial_seed = None
-        for ind_M, M in enumerate(Ms):
-            T = dt * M  # s
+        for trial in trange(trials, desc='Loading/scheduling calculations'):
+            # if seed is not None:
+            #     trial_seed = seed + trial
+            # else:
+            #     trial_seed = None
+            for ind_M, M in enumerate(Ms):
 
-            # OPTIMIZE:
-            if particle == 1:
-                for ind_n, n1 in enumerate(n1s):
-                    args_string = get_cluster_args_string(
-                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, T=T, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate=recalculate)
-                    if dry_run:
-                        file.write(args_string)
+                # OPTIMIZE:
+                if particle == 1:
+                    for ind_n, n1 in enumerate(n1s):
+                        args_string = get_cluster_args_string(
+                            D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF)
+                        # if dry_run:
+                        #     file.write(args_string)
+                        #
+                        # else:
+                        #     # print(args_string)
+                        #     lg_BF_vals[ind_M, ind_n, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
+                        #         args_string)
 
-                    else:
-                        # print(args_string)
-                        lg_BF_vals[ind_M, ind_n, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
+                        lg_BF_vals[ind_M, ind_n, trial], ln_evidence_with_link, ln_evidence_free, loaded = simulate_and_calculate_Bayes_factor_terminal(
+                            args_string, cluster=cluster)
+                        if cluster and not loaded:
+                            file.write(args_string)
+
+                else:
+                    for ind_n, n2 in enumerate(n2s):
+                        args_string = get_cluster_args_string(
+                            D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma,  dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate_trajectory=False, recalculate_BF=False)
+                        # if dry_run:
+                        #     file.write(args_string)
+                        #
+                        # else:
+                        #     # print(args_string)
+                        #     lg_BF_vals[ind_M, ind_n, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
+                        #         args_string)
+
+                        lg_BF_vals[ind_M, ind_n, trial], ln_evidence_with_link, ln_evidence_free, loaded = simulate_and_calculate_Bayes_factor_terminal(
                             args_string)
-            else:
-                for ind_n, n2 in enumerate(n2s):
-                    args_string = get_cluster_args_string(
-                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, T=T, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate=recalculate)
-                    if dry_run:
-                        file.write(args_string)
+                        if cluster and not loaded:
+                            file.write(args_string)
 
-                    else:
-                        # print(args_string)
-                        lg_BF_vals[ind_M, ind_n, trial], ln_evidence_with_link, ln_evidence_free = simulate_and_calculate_Bayes_factor_terminal(
-                            args_string)
+            # time.sleep(3)
 
-    if dry_run:
-        file.close()
-        print('Dry run finished. Arguments file created')
-        if verbose:
+        if cluster and verbose:
             print('Warning: verbose was active')
-        return np.nan
+            # return np.nan
 
     # %% Calculating means and CI
     median_lg_BFs = np.nanmedian(lg_BF_vals, axis=2)
@@ -416,7 +410,7 @@ def plot_localization_dependence(trials=20, n_range=[1e-2, 100], particle=1, ver
         # print('CIs: ', np.log10(CIs))
 
     # %% Actual plotting
-    fig = set_figure_size(num=3, rows=rows, page_width_frac=page_width_frac,
+    fig = set_figure_size(num=5, rows=rows, page_width_frac=page_width_frac,
                           height_factor=height_factor)
 
     # Confidence intervals

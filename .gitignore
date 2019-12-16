@@ -107,3 +107,6 @@ venv.bak/
 trajectory.dat
 *.png
 *.dat
+.idea/
+figs/
+figures/

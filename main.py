@@ -31,8 +31,9 @@ from likelihood import (estimate_sigma2_matrix,
                         get_ln_likelihood_func_no_link, get_MLE,
                         get_sigma2_matrix_func)
 #  Load and plot data of the test result as a function of the link strength
-from plot import (plot_diffusivity_dependence, plot_link_strength_dependence,
-                  plot_localization_dependence, plot_periodogram)
+from plot import (plot_angle_dependence, plot_diffusivity_dependence,
+                  plot_link_strength_dependence, plot_localization_dependence,
+                  plot_periodogram)
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
 from support import (calculate_min_number_of_tries_with_a_binomial_model,
                      get_rotation_matrix, locally_rotate_a_vector)
@@ -62,35 +63,30 @@ true_parameters = {name: val for name, val in zip(
     (D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M))}
 
 
-# np.log(0.0167)
-# np.log(10)
-# np.log(2 * np.pi)
-# np.log(0.2)
-# print(f'A*dt scale: {np.array([n1, n2, n12]) * dt}')
-p = 6438 / 7150
-print(p)
-np.log(0.01) / np.log(1 - p)
-
 # %%
 recalculate_trajectory = 0
-recalculate_BF = 1
-cluster = 0
+recalculate_BF = 0
+cluster = 1
 
 if os.path.exists(arguments_file):
     os.unlink(arguments_file)
 
 
 lg_BF_vals = plot_link_strength_dependence(
-    trials=20, n12_range=[1e-1, 1e2], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
+    trials=50, n12_range=[1e-1, 1e2], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
 
 lg_BF_vals = plot_diffusivity_dependence(
-    trials=200, D1_range=[1e-2, 5], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
+    trials=50, D1_range=[1e-2, 5], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
 
 
 lg_BF_vals = plot_localization_dependence(
-    trials=200, n_range=[0.3, 100], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
+    trials=50, n_range=[0.3, 100], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
+
+lg_BF_vals = plot_angle_dependence(
+    trials=50, verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
 
 # %%
+np.pi / 3 - np.pi / 2
 #
 # # %% Calculate the Bayes factor
 # lg_bayes_factor, ln_evidence_with_link, ln_evidence_free = calculate_bayes_factor(

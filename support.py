@@ -62,7 +62,7 @@ def _hash_me(*args):
     Calculate a hash of the parameters to use as a unique key for saving or loading data.
 
     Only accepts single-value parameters. Does not accept arrays or lists
-    For external use, please call hash_from_dictionary()
+    For external use, call hash_from_dictionary()
     """
     hash_str = ''
     for i, arg in enumerate(args):
@@ -78,13 +78,13 @@ def _hash_me(*args):
     return hash.hexdigest()
 
 
-def hash_from_dictionary(true_parameters, dim=2):
-    args = [true_parameters[key] for key in 'D1 D2 n1 n2 n12 dt angle L M'.split()]
+def hash_from_dictionary(parameters, dim=2):
+    args = [parameters[key] for key in 'D1 D2 n1 n2 n12 M dt L0 angle model'.split()]
     args_no_trial = copy.deepcopy(args)
 
     # Allow to have multiple hashes for the same parameters
-    if 'trial' in true_parameters.keys():
-        trial = true_parameters['trial']
+    if 'trial' in parameters.keys():
+        trial = parameters['trial']
     else:
         trial = 0
     args.append(trial)
@@ -181,7 +181,7 @@ def stopwatch_dec(func):
     return wrapper
 
 
-def get_cluster_args_string(D1, D2, n1, n2, n12, gamma, dt, angle, L, M, trial=0, recalculate_trajectory=False, recalculate_BF=False, verbose=False):
+def get_cluster_args_string(D1, D2, n1, n2, n12, gamma, dt, angle, L, M, trial=0, recalculate_trajectory=False, recalculate_BF=False, verbose=False, rotation=True):
     args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g} --gamma={gamma:g} --dt={dt:g} --angle={angle:f} --L={L:f} --trial={trial:d} --M={M}'.format(
         D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L, trial=trial, M=M)
     if recalculate_trajectory:
@@ -190,6 +190,8 @@ def get_cluster_args_string(D1, D2, n1, n2, n12, gamma, dt, angle, L, M, trial=0
         args_string += ' --recalculate_BF'
     if verbose:
         args_string += ' --verbose'
+    if rotation:
+        args_string += ' --rotation'
     args_string += '\n'
     return args_string
 

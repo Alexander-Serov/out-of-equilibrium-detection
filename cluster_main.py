@@ -42,7 +42,7 @@ def main(arg_str):
 
     # Simulate the trajectories
     t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
-        true_parameters=true_parameters, plot=False, save_figure=False, recalculate=recalculate)
+        parameters=true_parameters, plot=False, save_figure=False, recalculate=recalculate)
 
     # Calculate and store the Bayes factor
     lg_bayes_factor, ln_evidence_with_link, ln_evidence_free = calculate_bayes_factor(

@@ -207,7 +207,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
 
 #
 
-@profile
+# @profile
 def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, save_figure=False,
                                      file=r'.\trajectory.dat', seed=None, verbose=False):
     """
@@ -255,9 +255,9 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     max_dt = np.min(time_scales) / min_dt_factor
     # print('Time scales / dt: ', time_scales / dt)
     # print('dt: {0:.2g}'.format(dt))
+    true_dt = dt
     if dt > max_dt:
         N_intermediate_points = int(np.ceil(dt / max_dt))
-        true_dt = dt
         dt = dt / N_intermediate_points
         bl_rescaled = True
         # N *= N_intermediate_points
@@ -446,7 +446,10 @@ def plot_trajectories(t, R, dR, true_parameters, save=False):
     L_mean = np.mean(Ls)
     L_var = np.var(dLs, ddof=1)
     L0, n12, D1, D2 = [true_parameters[key] for key in 'L0 n12 D1 D2'.split()]
-    L_var_expected = (D1 + D2) / 2 / n12 * (1 - np.exp(-4 * n12 * dt))
+    if n12!=0:
+        L_var_expected = (D1 + D2) / 2 / n12 * (1 - np.exp(-4 * n12 * dt))
+    else:
+        L_var_expected = np.inf
     print('\nLink length mean estimated (um): {0:.2g}\texpected: {1:.2g}'.format(L_mean, L0))
     print(
         'Link length variance estimated (um^2): {0:.2g}\texpected: {1:.2g}\tratio: {2:.2g}'.format(
@@ -480,12 +483,12 @@ if __name__ == '__main__':
                        'D2': 0.4,
                        'n1': 0,
                        'n2': 0,
-                       'n12': 30.0,
+                       'n12': 30.0*0,
                        'dt': 0.05,
                        'angle': -np.pi / 3,  # rad
                        'L0': 0.5,
                        'trial': 0,
-                       'M': 1000}
+                       'M': 5000}
 
     t, R, dR, hash = simulate_a_free_hookean_dumbbell(
         parameters=true_parameters, recalculate=True, verbose=True, plot=True)

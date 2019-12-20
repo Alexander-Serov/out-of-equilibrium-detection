@@ -25,6 +25,7 @@ from tqdm import tqdm, trange
 
 from stopwatch import stopwatch
 from support import hash_from_dictionary, load_data, save_data
+import sys
 
 
 def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
@@ -108,6 +109,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
     # R0 = np.transpose([np.hstack([r10, r20])])
     R = np.zeros((4, N + 1)) * np.nan
     R[:, 0] = R0
+
 
     # Q0 = R0 + Am1 @ a
     # print('R0', R0)
@@ -205,7 +207,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
 
 #
 
-
+@profile
 def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, save_figure=False,
                                      file=r'.\trajectory.dat', seed=None, verbose=False):
     """
@@ -254,16 +256,17 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     # print('Time scales / dt: ', time_scales / dt)
     # print('dt: {0:.2g}'.format(dt))
     if dt > max_dt:
-        used_dt_factor = int(np.ceil(dt / max_dt))
-        old_dt = dt
-        dt = dt / used_dt_factor
+        N_intermediate_points = int(np.ceil(dt / max_dt))
+        true_dt = dt
+        dt = dt / N_intermediate_points
         bl_rescaled = True
-        N *= used_dt_factor
+        # N *= N_intermediate_points
         if verbose:
             print(
-                f'For the accuracy of simmulations, time step changed from {old_dt:.2g} to {dt:.2g},\n\ti.e. reduced by the factor of {used_dt_factor}')
+                f'For the accuracy of simmulations, time step reduced by the factor of '
+                f'{N_intermediate_points} from {true_dt:.2g} to {dt:.2g}')
     else:
-        used_dt_factor = 1
+        N_intermediate_points = 1
 
     # n1, n2, n12 = np.array([k1, k2, k12]) / gamma
 
@@ -306,12 +309,13 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     # dt = 1e-2
     # N = np.ceil(T / dt).astype(int)
 
-    T = dt * N
-    t = np.arange(N + 1) * dt
+    # T = dt * N
+    t = np.arange(N + 1) * true_dt
 
     # R0 = np.transpose([np.hstack([r10, r20])])
     R = np.zeros((4, N + 1)) * np.nan
     R[:, 0] = R0
+    # print(f'R array size is {sys.getsizeof(R) / 2 ** 20} MB')
 
     # Q0 = R0 + Am1 @ a
     # print('R0', R0)
@@ -319,77 +323,35 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
 
     def a(_R):
         out = np.empty((4, 1))
-        # print('c', _R)
-        # print('e', out, _R1, _R2)
-        R_diff = _R[2:] - _R[:2]  # R2-R1
+        R_diff = _R[2:] - _R[:2]    # R2 - R1
         out[:2, :] = R_diff
         out[2:, :] = -R_diff
         L = np.linalg.norm(R_diff)
         out = out * n12 * (L - L0) / L
-        # print('L', L)
-        # print('force:', out)
         return out
 
-    # def check_zero(a):
-    #     """Check if all the values of the input array are 0"""
-    #     sum = np.sum(np.array(a)[:])
-    #     if np.isclose(sum, 0, atol=atol, rtol=rtol):
-    #         return True
-    #     else:
-    #         return False
-
-    # # One-step covariance matrix for the diagonal elements (stochastic integrals)
-    # # If lambdas are the same, must return the same values for them
-    # mean_1_step = [0] * 4
-    # cov_1_step = np.full_like(A, np.nan, dtype=np.float32)
-    # # print(cov_1_step, cov_1_step.dtype)
-    # atol_local = 1e-6
-    # # print('dt = ', dt)
-    # for i, li in enumerate(lambdas):
-    #     for j, lj in enumerate(lambdas):
-    #         exponent = dt * (li + lj)
-    #
-    #         # For the exponent smaller than atol=1e-6, use a series
-    #         if abs(exponent) < atol_local:
-    #             cov_1_step[i, j] = dt + exponent * dt / 2
-    #         else:
-    #             # print('test', (np.exp(dt * (li + lj)) - 1) / (li + lj))
-    #             cov_1_step[i, j] = (np.exp(dt * (li + lj)) - 1) / (li + lj)
-    #         # print('exponent', i, j, li, lj, dt, exponent, cov_1_step[i, j])
-    #
-    # # Sample the diagonal elements from the distribution:
-    # # Generation dimensions: 4 noise sources x N x 4 elements
-    # # print('cov_1_step', cov_1_step)
-    # diag_noise_integrals = np.random.multivariate_normal(mean_1_step, cov_1_step, size=(4, N))
-
-    # # Calculate the return force integrals that do not change from step to step
-    # diag_return_force_integrals = np.zeros(4) * np.nan
-    # for i, l in enumerate(lambdas):
-    #     if check_zero([l]):
-    #         diag_return_force_integrals[i] = dt
-    #     else:
-    #         diag_return_force_integrals[i] = (np.exp(l * dt) - 1) / l
-
     # Generate noise
-    dW = np.random.normal(0, np.sqrt(dt), size=(4, N))
 
-    def equation(R_next, i):
-        _R = R[:, i, np.newaxis]
+
+    def equation(R_next, dW, R_current):
         R_next = np.reshape(R_next, (-1, 1))
-        eqn = R_next - (_R + (alpha * a(R_next) + (1 - alpha) * a(_R))
-                        * dt + b * dW[:, i, np.newaxis])
+        eqn = R_next - (R_current + (alpha * a(R_next) + (1 - alpha) * a(R_current))
+                        * dt + b * dW)
         return np.reshape(eqn, -1)
 
     # Iterate over steps
+    R_next = R0.reshape((4,1))
     for i in trange(N, desc='Simulating'):
-        # Solve the equation
-        # print('a', R[:, i, np.newaxis])
-        # print('g', np.shape(R[:, i, np.newaxis]))
-        sol = root(equation, R[:, i, np.newaxis], args=(i))
-        # print(sol)
-        R_next = sol.x
+        for j in range(N_intermediate_points):
+            # Solve the equation
+            # print('a', R[:, i, np.newaxis])
+            # print('g', np.shape(R[:, i, np.newaxis]))
+            dW = np.random.normal(0, np.sqrt(dt), size=(4, 1))
+            sol = root(equation, R_next, args=(dW, R_next))
+            # print(sol)
+            R_next = np.reshape(sol.x, (4,1))
 
-        R[:, i + 1] = R_next
+        R[:, i + 1] = R_next[:, 0]
 
     # # print('R not rotated', R)
     # # Rotate the result if necessary. Q is the rotation matrix
@@ -418,13 +380,14 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     # new_R = R[(0, 2, 1, 3), :]
     # print('new_R', new_R)
 
-    # Resample to the original time step
-    R = R[:, ::used_dt_factor]
-    t = t[::used_dt_factor]
-    # print('Calculated number of points: ', np.shape(R)[1])
+    # # Resample to the original time step
+    # R = R[:, ::N_intermediate_points]
+    # t = t[::N_intermediate_points]
+    print('Calculated number of points: ', np.shape(R)[1])
 
     #  Displacements
     dR = R[:, 1:] - R[:, :-1]
+    # print(f'R array size is {sys.getsizeof(R) / 2 ** 20} MB')
 
     # Save the trajectories and simulation parameters
     # print(t, R, dR)
@@ -480,7 +443,7 @@ def plot_trajectories(t, R, dR, true_parameters, save=False):
     # Check the evolution of the link length
     Ls = np.sqrt(((R[0, :] - R[2, :])) ** 2 + ((R[1, :] - R[3, :])) ** 2)
     dLs = Ls[1:] - Ls[:-1]
-    L_mean = np.mean(dLs)
+    L_mean = np.mean(Ls)
     L_var = np.var(dLs, ddof=1)
     L0, n12, D1, D2 = [true_parameters[key] for key in 'L0 n12 D1 D2'.split()]
     L_var_expected = (D1 + D2) / 2 / n12 * (1 - np.exp(-4 * n12 * dt))

@@ -1,3 +1,7 @@
+"""
+isort:skip_file
+"""
+
 import unittest
 
 import numpy as np
@@ -14,58 +18,58 @@ class tests(unittest.TestCase):
 
     # def test_likelihood_one_point(self):
     #     """
-    #     Check if likelihoods are correctly calculated for different parameter values
-    #     """
-    #     k = 1
-    #     D1 = 1
-    #     D2 = 3
-    #     n1 = 1
-    #     n2 = 1
-    #     n12 = 1
-    #     M = 999
-    #     dt = 0.3
-    #     alpha = 0
-    #     atol = 1e-8
-    #     atol_log = 1e-3
-    #
-    #     """Test 1"""
-    #     z1 = 1e-4
-    #     true_ln_likelihood = 8.317699879
-    #     ln_estimate = likelihood_2_particles_x_link_one_point(
-    #         z=z1, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=alpha)
-    #
-    #     self.assertTrue(np.isclose(ln_estimate, true_ln_likelihood, atol=atol_log),
-    #                     f"One likelihood point test failed: {ln_estimate:.6g} != {true_ln_likelihood:.6g}")
-    #
-    #     """Test 2"""
-    #     z2 = 1e-1
-    #     true_ln_likelihood = -2786.649642
-    #     ln_estimate = likelihood_2_particles_x_link_one_point(
-    #         z=z2, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=alpha)
-    #
-    #     self.assertTrue(np.isclose(ln_estimate, true_ln_likelihood, atol=atol_log),
-    #                     f"One likelihood point test failed: {ln_estimate:.6g} != {true_ln_likelihood:.6g}")
-    #
-    #     """Test alpha = 1. This gives only one chi-squared function"""
-    #     k = 480
-    #     z2 = 0.5 * 2 * D1 * dt
-    #     alpha = 1
-    #
-    #     lamb1 = lamb2 = -1
-    #     J = -(((M * dt ** 2) * ((1 - exp(lamb1 * dt) * exp(lamb2 * dt)) * (1 + exp(lamb1 * dt) * exp(lamb2 * dt) - (exp(lamb1 * dt) + exp(lamb2 * dt)) * cos((2 * pi * k) / M)) * (1 - cos((2 * pi * k) / M)))) /
-    #           ((lamb1 + lamb2) * ((1 + exp(lamb1 * dt) ** 2 - 2 * exp(lamb1 * dt) * cos((2 * pi * k) / M)) * (1 + exp(lamb2 * dt) ** 2 - 2 * exp(lamb2 * dt) * cos((2 * pi * k) / M)))))
-    #     sigma2 = 2 * D1 * J / (M * dt)
-    #
-    #     true_ln_likelihood = -z2 / sigma2 / 2 - np.log(2) - np.log(sigma2)
-    #     ln_estimate = likelihood_2_particles_x_link_one_point(
-    #         z=z2, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=alpha)
-    #
-    #     # print('Likelihoods for the y-component', ln_estimate, true_ln_likelihood, J / M / dt)
-    #
-    #     self.assertTrue(np.isclose(ln_estimate, true_ln_likelihood, atol=atol_log),
-    #                     f"One likelihood point test failed: {ln_estimate:.6g} != {true_ln_likelihood:.6g}")
+   #     Check if likelihoods are correctly calculated for different parameter values
+   #     """
+   #     k = 1
+   #     D1 = 1
+   #     D2 = 3
+   #     n1 = 1
+   #     n2 = 1
+   #     n12 = 1
+   #     M = 999
+   #     dt = 0.3
+   #     alpha = 0
+   #     atol = 1e-8
+   #     atol_log = 1e-3
+   #
+   #     """Test 1"""
+   #     z1 = 1e-4
+   #     true_ln_likelihood = 8.317699879
+   #     ln_estimate = likelihood_2_particles_x_link_one_point(
+   #         z=z1, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=alpha)
+   #
+   #     self.assertTrue(np.isclose(ln_estimate, true_ln_likelihood, atol=atol_log),
+   #                     f"One likelihood point test failed: {ln_estimate:.6g} != {true_ln_likelihood:.6g}")
+   #
+   #     """Test 2"""
+   #     z2 = 1e-1
+   #     true_ln_likelihood = -2786.649642
+   #     ln_estimate = likelihood_2_particles_x_link_one_point(
+   #         z=z2, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=alpha)
+   #
+   #     self.assertTrue(np.isclose(ln_estimate, true_ln_likelihood, atol=atol_log),
+   #                     f"One likelihood point test failed: {ln_estimate:.6g} != {true_ln_likelihood:.6g}")
+   #
+   #     """Test alpha = 1. This gives only one chi-squared function"""
+   #     k = 480
+   #     z2 = 0.5 * 2 * D1 * dt
+   #     alpha = 1
+   #
+   #     lamb1 = lamb2 = -1
+   #     J = -(((M * dt ** 2) * ((1 - exp(lamb1 * dt) * exp(lamb2 * dt)) * (1 + exp(lamb1 * dt) * exp(lamb2 * dt) - (exp(lamb1 * dt) + exp(lamb2 * dt)) * cos((2 * pi * k) / M)) * (1 - cos((2 * pi * k) / M)))) /
+   #           ((lamb1 + lamb2) * ((1 + exp(lamb1 * dt) ** 2 - 2 * exp(lamb1 * dt) * cos((2 * pi * k) / M)) * (1 + exp(lamb2 * dt) ** 2 - 2 * exp(lamb2 * dt) * cos((2 * pi * k) / M)))))
+   #     sigma2 = 2 * D1 * J / (M * dt)
+   #
+   #     true_ln_likelihood = -z2 / sigma2 / 2 - np.log(2) - np.log(sigma2)
+   #     ln_estimate = likelihood_2_particles_x_link_one_point(
+   #         z=z2, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=alpha)
+   #
+   #     # print('Likelihoods for the y-component', ln_estimate, true_ln_likelihood, J / M / dt)
+   #
+   #     self.assertTrue(np.isclose(ln_estimate, true_ln_likelihood, atol=atol_log),
+   #                     f"One likelihood point test failed: {ln_estimate:.6g} != {true_ln_likelihood:.6g}")
 
-    def test_likelihood_several_points(self):
+   def test_likelihood_several_points(self):
         """Likelihood of the whole spectrum"""
         1
 
@@ -324,94 +328,6 @@ class tests(unittest.TestCase):
     #     # print(MLE_free)
 
     def test_simulate_and_calculate_BF():
-        """Check that the minimum is found correclty"""
-        # %%
-        from support import get_cluster_args_string
-        from calculate import simulate_and_calculate_Bayes_factor_terminal
-        import numpy as np
-        D1 = 2
-        D2 = 0.4
-        n1 = 0.482026
-        n2 = 1
-        n12 = 30
-        gamma = 1e-8
-        dt = 0.05
-        angle = 0
-        L = 20
-        trial = 2
-        M = 100
-        verbose = True
-        recalculate_trajectory = False
-        recalculate_BF = True
-
-        args_string = get_cluster_args_string(
-            D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF)
-        lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded = simulate_and_calculate_Bayes_factor_terminal(
-            args_string)
-        print(lg_BF_val, ln_evidence_with_link, ln_evidence_free)
-
-        # %% Make a 2D plot of the likelihood without link
-        import numpy as np
-        ks_fit = range(1, 50)
-        dRks_fit = np.array([
-            [-9.42673977e-02 - 0.07830783, 4.99892066e-02 + 0.00716147j, -5.62130494e-02 - 0.16585038, -1.30686721e-01 + 0.07249521j, 5.36358168e-02 - 0.06084522, -9.73989596e-03 + 0.07519079j, 7.69816459e-02 + 0.04040272, 3.81341080e-02 - 0.00282007j, -9.46475518e-02 + 0.14101085, -1.72493847e-01 + 0.05680884j, -4.32296966e-02 + 0.05868715, -1.12375244e-01 - 0.18915243j, -1.45649895e-01 - 0.0025442, -8.40149692e-02 - 0.02567425j, 9.09710102e-02 + 0.00918383, 1.24404655e-01 + 0.08513545j, 3.48238147e-02 - 0.15115672, 7.43881763e-03 - 0.05127688j, -1.24561722e-01 + 0.0043112,  8.39442663e-02 - 0.00974443j, -1.99041569e-04 + 0.00082801, 8.30601415e-03 - 0.21257079j, -2.31752482e-01 - 0.01849718, 5.67117466e-02 + 0.19038092j, 5.01376992e-02 +
-                0.07310527, -1.13334339e-01 - 0.02948302j, -1.43306845e-02 + 0.08839033, -7.16896894e-02 + 0.13650841j, 1.63010386e-01 + 0.07458665, 2.23571496e-02 + 0.08039395j, 1.67351275e-01 - 0.06136624, 5.32708818e-02 + 0.03055005j, -2.32503015e-01 - 0.01011695, -4.69016018e-02 + 0.032485j, -2.42760403e-02 - 0.00113698, 3.12318394e-02 - 0.14305091j, 8.33199033e-02 - 0.315718,   7.04069095e-02 - 0.28625322j, -9.08914438e-02 + 0.07510545, 1.79643095e-02 - 0.04653096j, 2.93792278e-01 + 0.02252216, 3.67871358e-02 - 0.07371123j, 2.55251094e-01 + 0.19216891, 1.99409415e-02 - 0.1452005j, 2.51916019e-02 + 0.13196488, -1.95085805e-01 - 0.01863178j, -3.73409053e-01 + 0.08616907, -3.67742491e-02 + 0.18409647j, -1.63878001e-01 + 0.15536625j],
-            [-1.02939892e-01 - 0.00927484, 2.00817872e-01 - 0.20336064j, 4.35621007e-03 + 0.07832352, -3.94165661e-01 + 0.35657627j, -1.20323592e-01 - 0.01282175, 5.81545508e-02 - 0.3548926j, 4.71000129e-02 + 0.05647322, 4.11658369e-02 - 0.18302626j, -2.63901719e-01 - 0.22334997, 1.65399790e-01 - 0.07213713j, -1.36781750e-01 - 0.04478006, -5.44033231e-02 - 0.12666956j, 1.06566720e-01 - 0.10786352, 1.49342787e-01 - 0.14773613j, 8.22048272e-02 + 0.07531817, 2.94518973e-01 - 0.19972915j, -3.64585027e-03 + 0.19885127, -4.57097166e-02 + 0.04476418j, -1.06792959e-01 - 0.05989786, -1.39437068e-01 + 0.05732779j, -1.36245616e-01 - 0.17422502, 7.18620924e-02 + 0.13376619j, 1.53695347e-01 + 0.06229819, -6.89514986e-02 + 0.18154644j, -1.67357834e-03 + 0.11246296, -8.74728534e-02 + 0.01172282j, 2.09660767e-01 + 0.21316067, 9.76355216e-03 - 0.04522468j, -5.67369122e-01 - 0.22348069, 2.46506224e-01 + 0.03833962j, -6.53881343e-02 - 0.19654188, 8.23786216e-02 + 0.20165343j, -5.17280561e-02 - 0.12705471, 9.95339866e-02 - 0.09043727j, 2.08019534e-02 + 0.08387033, 1.28652526e-01 + 0.17038685j, -1.51907796e-01 - 0.05585611, 2.38721699e-01 - 0.29908385j, -4.06451655e-01 - 0.07762633, 9.77717696e-02 - 0.07865763j, 2.25253268e-02 + 0.12920006, -1.31056828e-01 + 0.15587177j, -8.31464689e-02 + 0.25330123, -3.11892175e-02 - 0.0140451j, -2.71227471e-03 - 0.00844309, -1.22727790e-01 + 0.32795989j, 6.28191641e-02 + 0.04053132, 2.23825205e-01 + 0.23997069j, -7.42875646e-02 + 0.11993988j]])
-
-        # Get likelihood without link
-        from matplotlib import pyplot as plt
-        from likelihood import (get_ln_likelihood_func_no_link,
-                                get_ln_prior_func, get_MLE, get_sigma2_matrix_func,
-                                likelihood_2_particles_x_link_one_point)
-        from tqdm import tqdm
-
-        ln_lklh_func = get_ln_likelihood_func_no_link(
-            ks=ks_fit, M=M, dt=dt, dRks=dRks_fit)
-        ln_prior, sample_from_the_prior = get_ln_prior_func()
-        names = ('D1', 'n1')
-
-        def minimize_me(args):
-            """-ln posterior to minimize"""
-            args_dict = {a: args[i] for i, a in enumerate(names)}
-            return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
-
-        def to_list(dict):
-            return [dict[key] for key in names]
-
-        # ln_lklh_func(**fit_min_with_link)
-        # minimize_me(to_list(fit_min_with_link))
-        link = True
-
-        # %%
-        # Min 1
-        min1 = {'D1': 3.558597699124776, 'n1': 59.50217118881246}
-        min2 = {'D1': 1.276442952375804, 'n1': 0.06981484381621211}
-        minimize_me(to_list(min1))
-        minimize_me(to_list(min2))
-
-        # %%
-
-        # lims = [[0.01, 10], [0.01, 100]]
-        n = 100
-        D1s = np.logspace(0, 1, 20)
-        n1s = np.logspace(-2, 2, n)
-        xx, yy = np.meshgrid(D1s, n1s)
-        ln_funcs = np.full((len(n1s), len(D1s)), np.nan)
-        for i, D1 in enumerate(tqdm(D1s)):
-            for j, n1 in enumerate(n1s):
-                ln_funcs[j, i] = minimize_me((D1, n1))
-
-        # ln_funcs = [minimize_me((D1, n1)) for D1, n1 in zip(D1s, n1s)]
-        # list(zip(xx, yy))
-
-        plt.figure(36 + int(link), clear=True)
-        plt.contourf(D1s, n1s, ln_funcs, levels=30)
-        plt.yscale('log')
-        plt.xscale('log')
-        plt.xlabel('D1')
-        plt.ylabel('n1')
-        plt.colorbar()
-        plt.show()
 
         1
 
@@ -441,3 +357,136 @@ class tests(unittest.TestCase):
         # # t1.real
 
         1
+        np.linspace(10, 10, 10)
+
+
+# if __name__ == "__main__"":
+"""Check that the minimum is found correclty"""
+# %%
+
+import numpy as np
+from matplotlib import pyplot as plt
+from scipy.fftpack import fft, ifft
+from tqdm import tqdm
+
+from calculate import simulate_and_calculate_Bayes_factor_terminal
+from likelihood import (get_ln_likelihood_func_no_link, get_ln_prior_func,
+                        get_MLE, get_sigma2_matrix_func,
+                        likelihood_2_particles_x_link_one_point)
+from simulate import simulate_2_confined_particles_with_fixed_angle_bond
+from support import get_cluster_args_string, hash_from_dictionary
+
+D1 = 1
+D2 = 0.4
+n1 = 30
+n2 = 1
+n12 = 30 * 0
+gamma = 1e-8
+dt = 0.05
+angle = 0
+L = 20
+trial = 0
+M = 100
+verbose = True
+recalculate_trajectory = 0
+recalculate_BF = 1
+
+true_parameters = {name: val for name, val in zip(
+    ('D1 D2 n1 n2 n12 gamma dt angle L trial M'.split()),
+    (D1, D2, n1, n2, n12, gamma, dt, angle, L, trial, M))}
+
+t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
+    parameters=true_parameters, plot=1, save_figure=False, recalculate=recalculate_trajectory)
+
+dRk_short = dt * fft(dR[:2, :])
+
+M = np.shape(dR)[1]
+
+if not M % 2:    # even M
+    fit_indices = np.arange(1, M / 2, dtype=np.int)
+else:  # odd M
+    fit_indices = np.arange(1, (M - 1) / 2 + 1, dtype=np.int)
+ks_fit = fit_indices
+dRks_fit = dRk_short[:, fit_indices]
+
+# args_string = get_cluster_args_string(
+#     D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L, trial=trial, M=M, verbose=verbose, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF)
+# lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded = simulate_and_calculate_Bayes_factor_terminal(
+#     args_string)
+# print(lg_BF_val, ln_evidence_with_link, ln_evidence_free)
+
+# %% Make a 2D plot of the likelihood without link
+
+
+ln_lklh_func = get_ln_likelihood_func_no_link(
+    ks=ks_fit, M=M, dt=dt, dRks=dRks_fit)
+ln_prior, sample_from_the_prior = get_ln_prior_func()
+names = ('D1', 'n1')
+
+
+def minimize_me(args):
+    """-ln posterior to minimize"""
+    args_dict = {a: args[i] for i, a in enumerate(names)}
+    return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
+    # return - ln_prior(**args_dict)
+
+
+def to_list(dict):
+    return [dict[key] for key in names]
+
+
+# ln_lklh_func(**fit_min_with_link)
+# minimize_me(to_list(fit_min_with_link))
+link = False
+
+# %%
+hash, hash_no_trial = hash_from_dictionary(parameters=true_parameters)
+MLE_free, ln_evidence_free, max_free, success_free = get_MLE(
+      ks=ks_fit, zs_x=None, zs_y=None, dRks=dRks_fit, hash_no_trial=hash_no_trial, M=M, dt=dt, link=False, verbose=verbose, rotation=False)
+MLE_free
+
+# %%
+# Min 1
+min_true = {'D1': D1, 'n1': n1}
+min2 = MLE_free
+minimize_me(to_list(min_true))
+minimize_me(to_list(min2))
+
+# %%
+
+# lims = [[0.01, 10], [0.01, 100]]
+n = 100
+D1s = np.linspace(0.4, 3, 20)
+n1s = np.logspace(-1, max([np.log(2*min2['n1']), 1]), n)
+xx, yy = np.meshgrid(D1s, n1s)
+ln_funcs = np.full((len(n1s), len(D1s)), np.nan)
+for i, D1 in enumerate(tqdm(D1s)):
+    for j, n1 in enumerate(n1s):
+        ln_funcs[j, i] = minimize_me((D1, n1))
+
+# ln_funcs = [minimize_me((D1, n1)) for D1, n1 in zip(D1s, n1s)]
+# list(zip(xx, yy))
+
+# %%
+
+plt.figure(36 + int(link), clear=True)
+plt.contourf(D1s, n1s, ln_funcs, levels=50, cmap='jet')
+plt.colorbar()
+plt.scatter(*list(min_true.values()), marker = 'x', color = 'k')
+plt.scatter(*list(min2.values()), marker = 'o', color = 'k')
+plt.yscale('log')
+plt.xscale('linear')
+plt.xlabel('D1')
+plt.ylabel('n1')
+
+plt.show()
+
+list(min_true.values())
+
+# # %%
+# l = -n1
+# k=1
+# c1=np.exp(l * dt)
+# ck = np.exp(- 2 * np.pi * k * 1j /M)
+# Q11=M/2/l * (c1**2-1) / np.abs(c1-ck)**2
+# Q11

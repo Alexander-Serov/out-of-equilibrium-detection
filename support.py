@@ -53,7 +53,7 @@ def locally_rotate_a_vector(dR, lag):
     for j in range(N - lag):
         dr = dR[:, j]
         RM = get_rotation_matrix(dr)
-        rotated[:, j] = RM @  dR[:, j + lag]
+        rotated[:, j] = RM @ dR[:, j + lag]
     return rotated
 
 
@@ -72,7 +72,7 @@ def _hash_me(*args):
         if isinstance(arg, str):
             hash_str += arg
         else:
-            hash_str += f'{arg:e}'
+            hash_str += f'{arg:g}'
 
     hash = hashlib.md5(hash_str.encode('utf-8'))
     return hash.hexdigest()
@@ -80,7 +80,7 @@ def _hash_me(*args):
 
 def hash_from_dictionary(parameters, dim=2):
     args = [parameters[key] for key in 'D1 D2 n1 n2 n12 M dt L0 angle model'.split()]
-    args_no_trial = copy.deepcopy(args)
+    args_no_trial = args.copy()
 
     # Allow to have multiple hashes for the same parameters
     if 'trial' in parameters.keys():
@@ -110,8 +110,8 @@ def load_data(hash):
             except Exception() as e:
                 print('Load failed with exception', e)
     # else:
-        # print(f'Cannot load because file "{filename}" not found')
-        # 1
+    # print(f'Cannot load because file "{filename}" not found')
+    # 1
 
     return dict_data, loaded
 
@@ -178,12 +178,17 @@ def stopwatch_dec(func):
         delta = time.time() - start
         print(f'\n{func.__name__} completed in {round(delta, 1)} s.\n')
         return results
+
     return wrapper
 
 
-def get_cluster_args_string(D1, D2, n1, n2, n12, gamma, dt, angle, L, M, trial=0, recalculate_trajectory=False, recalculate_BF=False, verbose=False, rotation=True):
-    args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g} --gamma={gamma:g} --dt={dt:g} --angle={angle:f} --L={L:f} --trial={trial:d} --M={M}'.format(
-        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L, trial=trial, M=M)
+def get_cluster_args_string(D1, D2, n1, n2, n12, dt, L, M, model, trial=0,
+                            recalculate_trajectory=False, recalculate_BF=False, verbose=False,
+                            rotation=True, angle=None, gamma = None):
+    args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g}  --dt={dt:g} ' \
+                  '--L={L:g} --trial={trial:d} --M={M} --model={model}'.format(
+        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12,  dt=dt,  L=L, trial=trial,
+        M=M, model = model)
     if recalculate_trajectory:
         args_string += ' --recalculate_trajectory'
     if recalculate_BF:
@@ -192,9 +197,13 @@ def get_cluster_args_string(D1, D2, n1, n2, n12, gamma, dt, angle, L, M, trial=0
         args_string += ' --verbose'
     if rotation:
         args_string += ' --rotation'
+    if angle is not None:
+        args_string += f' --angle={angle:f}'
     args_string += '\n'
     return args_string
 
+# --gamma={gamma:g}
+# --angle={angle:f}
 
 def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_update=False):
     """
@@ -351,11 +360,11 @@ def set_figure_size(num, rows, page_width_frac, height_factor=1.0, clear=True):
     # Enable LaTeX and set font to Helvetica
     plt.rc('text', usetex=True)
     plt.rcParams['text.latex.preamble'] = [
-        r'\usepackage{tgheros}',    # helvetica font
-        r'\usepackage{sansmath}',   # math-font matching  helvetica
-        r'\sansmath'                # actually tell tex to use it!
-        r'\usepackage{siunitx}',    # micro symbols
-        r'\sisetup{detect-all}',    # force siunitx to use the fonts
+        r'\usepackage{tgheros}',  # helvetica font
+        r'\usepackage{sansmath}',  # math-font matching  helvetica
+        r'\sansmath'  # actually tell tex to use it!
+        r'\usepackage{siunitx}',  # micro symbols
+        r'\sisetup{detect-all}',  # force siunitx to use the fonts
     ]
     # Enforce TrueType fonts for easier editing later on
     # matplotlib.rcParams['pdf.fonttype'] = 42
@@ -441,7 +450,7 @@ def calculate_min_number_of_tries_with_a_binomial_model(stat_filename=stat_filen
             p = filtered['No of similar function values in MLE search results'] / filtered['Tries']
             min_N = np.log(1 - conf_level) / np.log(1 - p)
             print(
-                f'Minimum number of tries to find a minimum with {conf_level*100:.0f}% with link={link} is {min_N:.1f}')
+                f'Minimum number of tries to find a minimum with {conf_level * 100:.0f}% with link={link} is {min_N:.1f}')
         else:
             print(f'No data satisfying the criteria for link={link}')
     return 0
@@ -451,8 +460,10 @@ def calculate_min_number_of_tries_with_a_binomial_model(stat_filename=stat_filen
 if __name__ == "__main__":
     find_inverse_gamma_function_scale(0.01, 0.01, 2)
 
+
     def test(beta=0.11683992564378747, alpha=2, x=0.01):
-        return beta**alpha / gamma(alpha) * x**(-alpha - 1) * np.exp(-beta / x)
+        return beta ** alpha / gamma(alpha) * x ** (-alpha - 1) * np.exp(-beta / x)
+
 
     test(x=0.01)
     test(x=0.11683992564378747 / 3)

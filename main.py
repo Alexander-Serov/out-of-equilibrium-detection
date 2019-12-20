@@ -40,19 +40,18 @@ from support import (calculate_min_number_of_tries_with_a_binomial_model,
 
 #  Constants
 D2 = 0.4  # um^2/s
-D1 = 5 * D2   # um^2/s; 0.4
+D1 = 5 * D2  # um^2/s; 0.4
 n1 = 2e3
 n2 = 2e3
 n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
 N = 101  # required number of points in a trajectory
 dt = 0.05  # s 0.3
-gamma = 1e-8    # viscous drag, in kg/s
+gamma = 1e-8  # viscous drag, in kg/s
 L = 0.5
 angle = 0
-trial = 0   # the trial number
+trial = 0  # the trial number
 
 arguments_file = 'arguments.dat'
-
 
 k1, k2, k12 = np.array([n1, n2, n12]) * gamma
 T = dt * (N - 1)  # s
@@ -62,7 +61,6 @@ true_parameters = {name: val for name, val in zip(
     ('D1 D2 n1 n2 n12 gamma T dt angle L trial M'.split()),
     (D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M))}
 
-
 # %%
 recalculate_trajectory = 0
 recalculate_BF = 0
@@ -71,19 +69,21 @@ cluster = 1
 if os.path.exists(arguments_file):
     os.unlink(arguments_file)
 
-
 lg_BF_vals = plot_link_strength_dependence(
-    trials=50, n12_range=[1e-1, 1e2], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
+    trials=50, n12_range=[1e-1, 1e2], verbose=False, recalculate_trajectory=recalculate_trajectory,
+    recalculate_BF=recalculate_BF, cluster=cluster)
 
 lg_BF_vals = plot_diffusivity_dependence(
-    trials=50, D1_range=[1e-2, 5], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
-
+    trials=50, D1_range=[1e-2, 5], verbose=False, recalculate_trajectory=recalculate_trajectory,
+    recalculate_BF=recalculate_BF, cluster=cluster)
 
 lg_BF_vals = plot_localization_dependence(
-    trials=50, n_range=[0.3, 100], verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
+    trials=50, n_range=[0.3, 100], verbose=False, recalculate_trajectory=recalculate_trajectory,
+    recalculate_BF=recalculate_BF, cluster=cluster)
 
 lg_BF_vals = plot_angle_dependence(
-    trials=50, verbose=False, recalculate_trajectory=recalculate_trajectory, recalculate_BF=recalculate_BF, cluster=cluster)
+    trials=50, verbose=False, recalculate_trajectory=recalculate_trajectory,
+    recalculate_BF=recalculate_BF, cluster=cluster)
 
 # %%
 np.pi / 3 - np.pi / 2
@@ -94,7 +94,6 @@ np.pi / 3 - np.pi / 2
 # print('lg Bayes factor: ', lg_bayes_factor)
 
 calculate_min_number_of_tries_with_a_binomial_model()
-
 
 1
 
@@ -220,12 +219,10 @@ opts = [{'points': (0.3403266133358649, 0.3403266133358649, 0.34033181423430503)
     'points': (494.8060386783946, 494.8060386783946, 494.8147221045491)}]
 [x for x in opts[0]['points']]
 
-
 a = [1, 2, 0.1]
 sorted(a)[-1:]
 
 log(0.01) / log(1 - 0.059)
-
 
 # %%
 plt.figure(4, clear=True)
@@ -258,7 +255,6 @@ sol = root_scalar(eqn, bracket=[1e-7, 1e5])
 beta = sol.root
 print('beta', beta)
 
-
 [np.exp(ln_func(x, beta)) for x in interval]
 eqn(1)
 
@@ -285,11 +281,9 @@ sol = root_scalar(eqn, bracket=[1e-7, 1e5])
 theta = sol.root
 print('theta', theta)
 
-
 print('Borders', [np.exp(ln_func(x, theta)) for x in interval])
 eqn(1)
 457 / 34 / 100 * np.array([366, 9.4, 66, 4])
-
 
 s = 3 + 1j
 s

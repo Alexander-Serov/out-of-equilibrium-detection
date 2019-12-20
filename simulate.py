@@ -156,12 +156,12 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
     # Iterate over steps
     for i in range(N):
         R_next = (
-                U @ np.diag(np.exp(lambdas * dt)) @ Um1 @ R[:, i, None]
-                + U @ np.diag(diag_return_force_integrals) @ Um1 @ a
-                + U @ np.diag(diag_noise_integrals[0, i, :]) @ Um1 @ b[:, 0, None]
-                + U @ np.diag(diag_noise_integrals[1, i, :]) @ Um1 @ b[:, 1, None]
-                + U @ np.diag(diag_noise_integrals[2, i, :]) @ Um1 @ b[:, 2, None]
-                + U @ np.diag(diag_noise_integrals[3, i, :]) @ Um1 @ b[:, 3, None]
+            U @ np.diag(np.exp(lambdas * dt)) @ Um1 @ R[:, i, None]
+            + U @ np.diag(diag_return_force_integrals) @ Um1 @ a
+            + U @ np.diag(diag_noise_integrals[0, i, :]) @ Um1 @ b[:, 0, None]
+            + U @ np.diag(diag_noise_integrals[1, i, :]) @ Um1 @ b[:, 1, None]
+            + U @ np.diag(diag_noise_integrals[2, i, :]) @ Um1 @ b[:, 2, None]
+            + U @ np.diag(diag_noise_integrals[3, i, :]) @ Um1 @ b[:, 3, None]
         )
         R[:, i + 1] = R_next[:, 0]
 
@@ -247,7 +247,9 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
                    L0 * np.cos(phi0), L0 * np.sin(phi0)]) / 2
 
     # Detect time scales of the problem
-    time_scales = np.array([1 / 2 / n12, 4 * D1 / L0 ** 2, 4 * D2 / L0 ** 2])
+    time_scales = np.array([4 * D1 / L0 ** 2, 4 * D2 / L0 ** 2])
+    if n12 > 0:
+        time_scales = np.append(time_scales, [1 / 2 / n12])
     max_dt = np.min(time_scales) / min_dt_factor
     # print('Time scales / dt: ', time_scales / dt)
     # print('dt: {0:.2g}'.format(dt))
@@ -260,6 +262,8 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
         if verbose:
             print(
                 f'For the accuracy of simmulations, time step changed from {old_dt:.2g} to {dt:.2g},\n\ti.e. reduced by the factor of {used_dt_factor}')
+    else:
+        used_dt_factor = 1
 
     # n1, n2, n12 = np.array([k1, k2, k12]) / gamma
 
@@ -377,7 +381,7 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
         return np.reshape(eqn, -1)
 
     # Iterate over steps
-    for i in trange(N, desc = 'Simulating'):
+    for i in trange(N, desc='Simulating'):
         # Solve the equation
         # print('a', R[:, i, np.newaxis])
         # print('g', np.shape(R[:, i, np.newaxis]))
@@ -466,7 +470,7 @@ def plot_trajectories(t, R, dR, true_parameters, save=False):
     dt = t[1] - t[0]
     dR2_baricenter = ((dR[0, :] + dR[2, :]) / 2) ** 2 + ((dR[1, :] + dR[3, :]) / 2) ** 2
     var_estimate_baricenter = np.mean(dR2_baricenter) * \
-                              len(dR2_baricenter) / (len(dR2_baricenter) - 1)
+        len(dR2_baricenter) / (len(dR2_baricenter) - 1)
     var_expected_baricenter = dt * (true_parameters['D1'] + true_parameters['D2'])
     print(
         '\nBaricenter variance estimated (um^2): {0:.2g}\texpected: {1:.2g}\tratio: {2:.2g}'.format(
@@ -478,7 +482,7 @@ def plot_trajectories(t, R, dR, true_parameters, save=False):
     dLs = Ls[1:] - Ls[:-1]
     L_mean = np.mean(dLs)
     L_var = np.var(dLs, ddof=1)
-    L0, n12, D1, D2 = [true_parameters[key] for key in 'L n12 D1 D2'.split()]
+    L0, n12, D1, D2 = [true_parameters[key] for key in 'L0 n12 D1 D2'.split()]
     L_var_expected = (D1 + D2) / 2 / n12 * (1 - np.exp(-4 * n12 * dt))
     print('\nLink length mean estimated (um): {0:.2g}\texpected: {1:.2g}'.format(L_mean, L0))
     print(
@@ -509,19 +513,19 @@ if __name__ == '__main__':
     # gamma = 1e-8  # kg/s
     # print('k/gamma*dt:', k12 / gamma * dt)
     # print('k/gamma*T:', k12 / gamma * T)
-    true_parameters = {'D1': 2.0,  # 2.0
+    true_parameters = {'D1': 0.4,  # 2.0
                        'D2': 0.4,
-                       'n1': 1.0,
-                       'n2': 1.0,
+                       'n1': 0,
+                       'n2': 0,
                        'n12': 30.0,
                        'dt': 0.05,
                        'angle': -np.pi / 3,  # rad
-                       'L': 10,
+                       'L0': 0.5,
                        'trial': 0,
                        'M': 1000}
 
     t, R, dR, hash = simulate_a_free_hookean_dumbbell(
-        parameters=true_parameters, recalculate=True, verbose=True)
+        parameters=true_parameters, recalculate=True, verbose=True, plot=True)
 
     li = -1
     lj = -1

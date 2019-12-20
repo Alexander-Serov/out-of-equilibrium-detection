@@ -77,8 +77,7 @@ class J_class:
             # new_Jfunc = self.Jfun
             if len(new_js) > 2:
                 raise RuntimeError(
-                    f'The behvaior for a correlation of more than 2 integrals is not defined. Encountered: {len(
-                        new_js)} integrals')
+                    f'The behvaior for a correlation of more than 2 integrals is not defined. Encountered: {len(new_js)} integrals')
 
             out = new_scale * self.Jfunc(new_js[0], new_js[1], self.k)
 
@@ -91,29 +90,33 @@ class J_class:
             out = J_class(self.js, self.k, self.Jfunc, self.scale * other)
         return out
 
-    def __rmul__(self, other):
-        return self.__mul__(other)
 
-    def __pow__(self, pow):
-        if pow != 2:
-            raise ValueError(f'Power operator not defined for pow = {pow}')
-        else:
-            return self * self
+def __rmul__(self, other):
+    return self.__mul__(other)
 
-    def __add__(self, other):
-        if other == 0:
-            return self
-        elif isinstance(other, self.__class__):
-            # new_js = [self.js, other.js]
-            # ks = [self.k, other.k]
-            # Jfuncs = [self.Jfunc, other.Jfunc]
-            # scales = [self.scale, other.scale]
-            return J_combination([self, other])
-        else:
-            raise RuntimeError(f'Addition not defined for the argument {other}')
 
-    def __radd__(self, other):
-        return self.__add__(other)
+def __pow__(self, pow):
+    if pow != 2:
+        raise ValueError(f'Power operator not defined for pow = {pow}')
+    else:
+        return self * self
+
+
+def __add__(self, other):
+    if other == 0:
+        return self
+    elif isinstance(other, self.__class__):
+        # new_js = [self.js, other.js]
+        # ks = [self.k, other.k]
+        # Jfuncs = [self.Jfunc, other.Jfunc]
+        # scales = [self.scale, other.scale]
+        return J_combination([self, other])
+    else:
+        raise RuntimeError(f'Addition not defined for the argument {other}')
+
+
+def __radd__(self, other):
+    return self.__add__(other)
 
 
 class J_combination:
@@ -252,9 +255,9 @@ def get_sigma2_matrix_func(D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0
         else:
             lamb1, lamb2 = lambdas[[i, j]]
             J = -(((M * dt ** 2) * ((1 - exp(lamb1 * dt) * exp(lamb2 * dt)) * (
-                        1 + exp(lamb1 * dt) * exp(lamb2 * dt) - (
-                            exp(lamb1 * dt) + exp(lamb2 * dt)) * cos((2 * pi * k) / M)) * (
-                                                1 - cos((2 * pi * k) / M)))) /
+                    1 + exp(lamb1 * dt) * exp(lamb2 * dt) - (
+                    exp(lamb1 * dt) + exp(lamb2 * dt)) * cos((2 * pi * k) / M)) * (
+                                            1 - cos((2 * pi * k) / M)))) /
                   ((lamb1 + lamb2) * ((1 + exp(lamb1 * dt) ** 2 - 2 * exp(lamb1 * dt) * cos(
                       (2 * pi * k) / M)) * (1 + exp(lamb2 * dt) ** 2 - 2 * exp(lamb2 * dt) * cos(
                       (2 * pi * k) / M)))))
@@ -734,6 +737,291 @@ def get_ln_likelihood_func_no_link(ks, M, dt, dRks=None):
     return ln_lklh
 
 
+def get_ln_likelihood_func_free_hookean_with_link_same_D(ks, M, dt, dRks):
+    """
+    Returns a ln of the likelihood function for all input data points as a function of
+    specified parameters. The likelihood is not normalized over these parameters.
+    """
+
+    def ln_lklh(D1, n12, L0):
+        ln_lklh_vals = [ln_likelihood_func_free_hookean_same_D_with_link_one_point(
+            dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, n12=n12, M=M,
+            dt=dt, L0=L0) for i in range(len(ks))]
+
+        ln_lklh_val = np.sum(ln_lklh_vals)
+
+        return ln_lklh_val
+
+    return ln_lklh
+
+
+def get_ln_likelihood_func_free_hookean_no_link_same_D(ks, M, dt, dRks):
+    """
+    Returns a ln of the likelihood function for all input data points as a function of
+    specified parameters. The likelihood is not normalized over these parameters.
+    """
+
+    def ln_lklh(D1):
+        ln_lklh_vals = [ln_likelihood_func_free_hookean_same_D_no_link_one_point(
+            dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, M=M, dt=dt) for i in range(len(ks))]
+
+        ln_lklh_val = np.sum(ln_lklh_vals)
+
+        return ln_lklh_val
+
+    return ln_lklh
+
+
+def ln_likelihood_func_free_hookean_same_D_with_link_one_point(dRk, k=1, D1=1, n12=1, M=999,
+                                                               dt=0.3, L0=1):
+    """
+    #TOUPDATE
+    Calculate likelihood of one power spectrum observation z for the frequency k.
+    Does not work for k = 0.
+
+    Input:
+    gamma --- viscosity, kg/s,
+    z --- the value of the power spectrum component,
+    n1, n2 , n12 --- variables starting with n are spring constants normalizedby gamma, i.e. n1 = k1 /gamma
+
+    Definitions:
+    R --- 4D vector of locations vs. time, {x1, y1, x2, y2} x N,
+    dR --- 4D vector of displacements, shorter by 1 point,
+    mu = <dR>,
+    ksi = dR - mu --- stochastic part of the displacement,
+
+
+    Important:
+    - The calculations below will be wrong if one of lambda values is 0.
+    # - the Gamma and C matrices are not multiplied by
+
+    """
+
+    ATOL = 1e-5
+    dRk = copy.copy(dRk)
+
+    if np.any(np.array((D1, n12, L0)) < 0):
+        return ln_neg_infty
+
+    # # %% Hard-code the eigenvalues and the diagonalizing matrix U
+    # # Treat separately the case of n12=0 and n12>0
+    # ck = exp(-2 * pi * 1j * k / M)
+    # if n12 > ATOL:
+    #     g = np.sqrt((n1 - n2) ** 2 + 4 * n12 ** 2)
+    #     lambdas = np.array([-2 * n1, -2 * n2, -g - n1 - 2 * n12 - n2, g - n1 - 2 * n12 - n2]) / 2
+    #     U = np.array([
+    #         [0, 0, -2 * n12, 2 * n12],
+    #         [2 * g, 0, 0, 0],
+    #         [0, 0, g - n1 + n2, g + n1 - n2],
+    #         [0, 2 * g, 0, 0]]) / 2 / g
+    #
+    #     Um1 = np.array([
+    #         [0, 2 * n12, 0, 0],
+    #         [0, 0, 0, 2 * n12],
+    #         [-g - n1 + n2, 0, 2 * n12, 0],
+    #         [g - n1 + n2, 0, 2 * n12, 0]]) / 2 / n12
+    #
+    #     # lambdas_test, U_test = np.linalg.eig(A)
+    #
+    #     def cj(j):
+    #         return exp(lambdas[j - 1] * dt)
+    #
+    #     def Q(i, j):
+    #         r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] +
+    #                                        lambdas[j - 1]) / (cj(j) - ck) / (cj(i) - 1 / ck)
+    #         return r if i != j else r.real
+    #
+    #     # %% Get Gamma covariance matrix
+    #     G1 = np.array([
+    #         [2 * D1 * Q(1, 1), 0, 0, 0],
+    #         [0, 2 * D2 * Q(2, 2), 0, 0],
+    #         [0, 0, (D1 * (g + n1 - n2) + D2 * (g - n1 + n2)) *
+    #          Q(3, 3) / g, -(D1 - D2) * (g + n1 - n2) * Q(3, 4) / g],
+    #         [0, 0, -(D1 - D2) * (g - n1 + n2) * Q(4, 3) / g,
+    #          (D1 * (g - n1 + n2) + D2 * (g + n1 - n2)) * Q(4, 4) / g]])
+    #     Gfull = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * U @ G1 @ Um1
+    #
+    #
+    #
+    # else:
+    #     lambdas = np.array([-n1, -n1, -n2, -n2])
+    #
+    #     def cj(j):
+    #         return exp(lambdas[j - 1] * dt)
+    #
+    #     def Q(i, j):
+    #         r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] +
+    #                                        lambdas[j - 1]) / (cj(j) - ck) / (cj(i) - 1 / ck)
+    #         return r if i != j else r.real
+    #
+    #     # %% Get Gamma covariance matrix
+    #     G1 = np.array([
+    #         [2 * D1 * Q(1, 1), 0, 0, 0],
+    #         [0, 2 * D1 * Q(2, 2), 0, 0],
+    #         [0, 0, 2 * D2 * Q(3, 3), 0],
+    #         [0, 0, 0, 2 * D2 * Q(4, 4)]])
+    #     Gfull = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * G1
+    #
+    # # if k == 1:
+    # #     print(f'Q11(k=1) = {Q(1,1)}')
+    #
+    # Cfull = np.zeros((4, 4)) if k > 0 else Gfull
+    #
+    # G = Gfull[:2, :2]
+    # C = Cfull[:2, :2]
+
+    # Covariance and correlation matrices G, C
+    ck = exp(-2 * pi * 1j * k / M)
+    c_phi = exp(-2 * D1 * dt / L0 ** 2)
+    c_n12 = exp(-n12 * dt)
+    avg_dx1k_abs_squared = M * dt ** 2 * (
+            D1 * dt - (1 - cos(2 * pi * k / M)) / 4 * (
+            L0 ** 2 * (c_phi ** 2 - 1) / np.abs(c_phi * ck - 1) ** 2
+            + D1 * (c_phi ** 2 * c_n12 ** 4 - 1) / n12 / np.abs(c_phi * ck * c_n12 ** 2 - 1) ** 2
+    )
+    )
+    G = np.identity(2) * avg_dx1k_abs_squared
+    C = np.identity(2) * (M * D * dt ** 3 if k == 0 else 0)
+
+    # # If inferring the angle, rotate the G matrix
+    # if rotation:
+    #     S = np.array([[np.cos(alpha), -np.sin(alpha)],
+    #                   [np.sin(alpha), np.cos(alpha)]])
+    #     # S = np.array([[np.cos(alpha), np.sin(alpha)],
+    #     #               [-np.sin(alpha), np.cos(alpha)]])
+    #     G = S @ G @ S.T
+    #     C = S @ C @ S.T
+
+    P = G.conj() - C.conj().T @ np.linalg.inv(G) @ C
+
+    verbose = False
+    if verbose:
+        print(f'k={k}, n12={n12}')
+        print(f'det(full G)={np.linalg.det(Gfull)}')
+        print(f'eig(full G)={np.linalg.eigvals(Gfull)}')
+        print('Gfull ', Gfull)
+        # print('Hermitian: ',  G - G.conj().T)
+        print('U=', U)
+        print('Um1=', Um1)
+        print('U* Um1', U @ Um1)
+
+        print(f'det(G)={np.linalg.det(G)}')
+        print(f'eig(G)={np.linalg.eigvals(G)}')
+        print(f'det(G1)={np.linalg.det(G1)}')
+        print(f'eig(G1)={np.linalg.eigvals(G1)}')
+        print(f'G1={G1}')
+        # if k == 2:
+        raise RuntimeError('stop')
+
+    # Make some checks. Do not check all k because may be heavy
+    if k == 1:
+        # G is a non-negative definite matrix
+        det_G = np.linalg.det(G)
+        if det_G < 0:
+            logging.warning(
+                f'Gamma matrix determinant is negative ({det_G} < 0). It is likely there is a problem in the code')
+        # P is a non-negative positive definite matrix
+        det_P = np.linalg.det(P)
+        if det_P < 0:
+            logging.warning(
+                f'P matrix determinant is negative ({det_P} < 0). It is likely there is a problem in the code')
+
+    Q = np.block([[G, C], [C.conj(), G.conj()]])
+    Q_inv = np.linalg.inv(Q)
+
+    vec_right = np.vstack([dRk, dRk.conj()])
+    vec_left = vec_right.conj().T
+
+    # Calculate the log-likelihood
+    dim = 2
+    ln_prob = (-dim * log(pi) - 1 / 2 * log(np.linalg.det(G)) - 1 / 2 * log(np.linalg.det(P))
+               - 1 / 2 * vec_left @ Q_inv @ vec_right)
+
+    if ln_prob.shape != (1, 1):
+        logging.warning(
+            f'Log-likelihood matrix dimensions are incorrect. Check the supplied arrays. Got: {ln_prob}')
+    ln_prob = ln_prob[0, 0]
+
+    if abs(ln_prob.imag) > ATOL:
+        logging.warning(
+            'The imaginary part of the real likelihood is larger than tolerance. There might be an error. Result: {ln_prob}'.format(
+                ln_prob=ln_prob))
+    ln_prob = ln_prob.real
+
+    return ln_prob
+
+
+def ln_likelihood_func_free_hookean_same_D_no_link_one_point(dRk, k=1, D1=1, M=999, dt=0.3):
+    ATOL = 1e-5
+    dRk = copy.copy(dRk)
+
+    if D1 < 0:
+        return ln_neg_infty
+
+    # Covariance and correlation matrices G, C
+    avg_dx1k_abs_squared = 2 * D1 * dt ** 3 * M
+    G = np.identity(2) * avg_dx1k_abs_squared
+    C = np.identity(2) * (2 * D * dt ** 3 * M if k == 0 else 0)
+
+    P = G.conj() - C.conj().T @ np.linalg.inv(G) @ C
+
+    verbose = False
+    if verbose:
+        print(f'k={k}, n12={n12}')
+        print(f'det(full G)={np.linalg.det(Gfull)}')
+        print(f'eig(full G)={np.linalg.eigvals(Gfull)}')
+        print('Gfull ', Gfull)
+        # print('Hermitian: ',  G - G.conj().T)
+        print('U=', U)
+        print('Um1=', Um1)
+        print('U* Um1', U @ Um1)
+
+        print(f'det(G)={np.linalg.det(G)}')
+        print(f'eig(G)={np.linalg.eigvals(G)}')
+        print(f'det(G1)={np.linalg.det(G1)}')
+        print(f'eig(G1)={np.linalg.eigvals(G1)}')
+        print(f'G1={G1}')
+        # if k == 2:
+        raise RuntimeError('stop')
+
+    # Make some checks. Do not check all k because may be heavy
+    if k == 1:
+        # G is a non-negative definite matrix
+        det_G = np.linalg.det(G)
+        if det_G < 0:
+            logging.warning(
+                f'Gamma matrix determinant is negative ({det_G} < 0). It is likely there is a problem in the code')
+        # P is a non-negative positive definite matrix
+        det_P = np.linalg.det(P)
+        if det_P < 0:
+            logging.warning(
+                f'P matrix determinant is negative ({det_P} < 0). It is likely there is a problem in the code')
+
+    Q = np.block([[G, C], [C.conj(), G.conj()]])
+    Q_inv = np.linalg.inv(Q)
+
+    vec_right = np.vstack([dRk, dRk.conj()])
+    vec_left = vec_right.conj().T
+
+    # Calculate the log-likelihood
+    dim = 2
+    ln_prob = (-dim * log(pi) - 1 / 2 * log(np.linalg.det(G)) - 1 / 2 * log(np.linalg.det(P))
+               - 1 / 2 * vec_left @ Q_inv @ vec_right)
+
+    if ln_prob.shape != (1, 1):
+        logging.warning(
+            f'Log-likelihood matrix dimensions are incorrect. Check the supplied arrays. Got: {ln_prob}')
+    ln_prob = ln_prob[0, 0]
+
+    if abs(ln_prob.imag) > ATOL:
+        logging.warning(
+            'The imaginary part of the real likelihood is larger than tolerance. There might be an error. Result: {ln_prob}'.format(
+                ln_prob=ln_prob))
+    ln_prob = ln_prob.real
+
+    return ln_prob
+
+
 # def new_get_ln_likelihood_func_no_link(ks, M, dt, zs_x=None, zs_y=None):
 #     """
 #     Returns a log of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
@@ -941,54 +1229,108 @@ def get_ln_prior_func(rotation=True):
     def cdf_alpha_prior(alpha):
         return 1 / 2 * (1 + erf((alpha - mu) / sigma / np.sqrt(2)))
 
+    ################# Link length L0 #################
+    L0_right = 10
+    tau = 1e-2
+    k = 2
+
+    def eqn(z):
+        # Condition: decrease on the right border as compared to mode is tau
+        return z * exp(1 - z) - tau
+
+    sol = root_scalar(eqn, bracket=[1, 1e5])
+    z = sol.root
+    theta_L0 = L0_right / z
+
+    # print('theta_n', theta)
+    # raise RuntimeError('stop')
+
+    def ln_L0_prior(L0):
+        """
+        Gamma distribution
+        """
+        theta = theta_L0
+        return - gammaln(k) - k * log(theta) + (k - 1) * log(L0) - L0 / theta
+
+    def cdf_L0_prior(L0):
+        theta = theta_L0
+        if L0 > 0:
+            return gammainc(k, L0 / theta)  # gamma
+        else:
+            return 0
+
     ################# Assemble the prior function #################
-    def ln_prior(D1, n1, D2=None, n2=None, n12=None, alpha=None):
+    def ln_prior(D1, n1=None, D2=None, n2=None, n12=None, alpha=None, L0=None):
         ln_result = 0
-        if np.any(np.array([D1, n1]) <= 0):
+
+        # D1
+        if D1 <= 0:
             return ln_neg_infty
         ln_result += ln_D_prior(D1)
-        ln_result += ln_n_prior(n1)
-        # print('D prior', D1, ln_D_prior(D1))
 
-        if all(v is not None for v in (D2, n2, n12)):
-            if np.any(np.array((D2, n2)) <= 0) or n12 < 0:
+        # D2
+        if D2 is not None:
+            if D2 <= 0:
                 return ln_neg_infty
             ln_result += ln_D_prior(D2)
+
+        # n1
+        if n1 is not None:
+            if n1 <= 0:
+                return ln_neg_infty
+            ln_result += ln_n_prior(n1)
+
+        # n2
+        if n2 is not None:
+            if n2 <= 0:
+                return ln_neg_infty
             ln_result += ln_n_prior(n2)
+
+        # n12
+        if n12 is not None:
+            if n12 < 0:
+                return ln_neg_infty
             ln_result += ln_n_link_prior(n12)
+
+        # angle alpha
         if alpha is not None:
             ln_result += ln_alpha_prior(alpha)
+
+        # L0
+        if L0 is not None:
+            if L0 <= 0:
+                return ln_neg_infty
+            ln_result += ln_L0_prior(L0)
+
         return ln_result
 
     # Assemble a sampler from the prior
-    def sample_from_the_prior(link):
-        """
-        Parameters:
-        link {bool} - set to true if need a prior with link
-        """
-        uni_sample = np.random.uniform(size=6)
+    def sample_from_the_prior(names):
+        uni_sample = np.random.uniform(size=7)
 
         # Convert the uniform sample into parameter values by sampling from that equation
         sample = {}
-        if not link:
-            cdfs = [cdf_D_prior, cdf_n_prior]
-            names = ('D1', 'n1')
-        elif link and not rotation:
-            names = ('D1', 'D2', 'n1', 'n2', 'n12')
-            cdfs = [cdf_D_prior, cdf_D_prior, cdf_n_prior, cdf_n_prior, cdf_n_link_prior]
-        elif link and rotation:
-            names = ('D1', 'D2', 'n1', 'n2', 'n12', 'alpha')
-            cdfs = [cdf_D_prior, cdf_D_prior, cdf_n_prior,
-                    cdf_n_prior, cdf_n_link_prior, cdf_alpha_prior]
+        # if not link:
+        #     cdfs = [cdf_D_prior, cdf_n_prior]
+        #     names = ('D1', 'n1')
+        # elif link and not rotation:
+        #     names = ('D1', 'D2', 'n1', 'n2', 'n12')
+        #     cdfs = [cdf_D_prior, cdf_D_prior, cdf_n_prior, cdf_n_prior, cdf_n_link_prior]
+        # elif link and rotation:
 
-        for i, (cdf, name) in enumerate(zip(cdfs, names)):
+        # names = ('D1', 'D2', 'n1', 'n2', 'n12', 'alpha', 'L0')
+        cdfs = {'D1': cdf_D_prior, 'D2': cdf_D_prior, 'n1': cdf_n_prior,
+                'n2': cdf_n_prior, 'n12': cdf_n_link_prior, 'alpha': cdf_alpha_prior, \
+                'L0': cdf_L0_prior}
+
+        for i, name in enumerate(names):
             if name is 'n12':
                 bracket = [0, 1e5]
             elif name is 'alpha':
                 bracket = [-100, 100]
             else:
                 bracket = [1e-10, 1e5]
-            sol = root_scalar(lambda y: cdf(y) - uni_sample[i], bracket=bracket)
+            sol = root_scalar(lambda y: cdfs[name](y) - uni_sample[i], bracket=bracket)
             sample[name] = sol.root
 
         return sample
@@ -996,11 +1338,14 @@ def get_ln_prior_func(rotation=True):
     return ln_prior, sample_from_the_prior
 
 
-def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, dRks=None, start_point=None,
-            verbose=False, rotation=True,
-            method='BFGS'
-            # method='Nelder-Mead'
-            ):
+def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, method='BFGS', verbose= \
+        False):
+    # ks, M, dt, link, hash_no_trial, ln_likelihood, ln_prior, zs_x=None, zs_y=None, \
+    #     dRks=None, start_point=None,
+    #     verbose=False, rotation=True,
+    #     method='BFGS'
+    # method='Nelder-Mead'
+    # ):
     """
     Locate the MLE of the posterior. Estimate the evidence integral through Laplace approximation. Since the parameters have different scales, the search is conducted in the log space of the parameters.
 
@@ -1027,52 +1372,57 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, dRks=None, sta
     # prob_new_start = 2 / 3
     np.random.seed()
 
-    if link and not rotation:
-        names = ('D1', 'D2', 'n1', 'n2', 'n12')
-
-        def to_dict(D1, D2, n1, n2, n12):
-            return {key: val for key, val in zip(names, (D1, D2, n1, n2, n12))}
-    elif link and rotation:
-        names = ('D1', 'D2', 'n1', 'n2', 'n12', 'alpha')
-
-        def to_dict(D1, D2, n1, n2, n12, alpha):
-            return {key: val for key, val in zip(names, (D1, D2, n1, n2, n12, alpha))}
-    else:
-        names = ('D1', 'n1')
-
-        def to_dict(D1, n1):
-            return {key: val for key, val in zip(names, (D1, n1))}
+    # if link and not rotation:
+    #     names = ('D1', 'D2', 'n1', 'n2', 'n12')
+    #
+    #     def to_dict(D1, D2, n1, n2, n12):
+    #         return {key: val for key, val in zip(names, (D1, D2, n1, n2, n12))}
+    # elif link and rotation:
+    #     names = ('D1', 'D2', 'n1', 'n2', 'n12', 'alpha')
+    #
+    #     def to_dict(D1, D2, n1, n2, n12, alpha):
+    #         return {key: val for key, val in zip(names, (D1, D2, n1, n2, n12, alpha))}
+    # else:
+    #     names = ('D1', 'n1')
+    #
+    #     def to_dict(D1, n1):
+    #         return {key: val for key, val in zip(names, (D1, n1))}
 
     def to_list(dict):
         return [dict[key] for key in names]
 
+    def to_dict(*args):
+        return {a: args[i] for i, a in enumerate(names)}
+
     d = len(names)
 
-    # Choose the appropriate likelihood
-    if link and not rotation:
-        ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
-            ks=ks, M=M, dt=dt, dRks=dRks, rotation=rotation)
+    # # Choose the appropriate likelihood
+    # if link and not rotation:
+    #     ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
+    #         ks=ks, M=M, dt=dt, dRks=dRks, rotation=rotation)
+    #
+    #     start_point_est = {'D1': 1, 'n1': 1e3, 'D2': 1, 'n2': 1e3, 'n12': 1e3}
+    # elif link and rotation:
+    #     ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
+    #         ks=ks, M=M, dt=dt, dRks=dRks, rotation=rotation)
+    #
+    #     start_point_est = {'D1': 1, 'n1': 1e3, 'D2': 1, 'n2': 1e3, 'n12': 1e3, 'alpha': 0.1}
+    #     alpha_ind = 5
+    # else:
+    #     ln_lklh_func = get_ln_likelihood_func_no_link(
+    #         ks=ks, M=M, dt=dt, dRks=dRks)
+    #       start_point_est = {'D1': 1, 'n1': 1e3}
 
-        start_point_est = {'D1': 1, 'n1': 1e3, 'D2': 1, 'n2': 1e3, 'n12': 1e3}
-    elif link and rotation:
-        ln_lklh_func = get_ln_likelihood_func_2_particles_x_link(
-            ks=ks, M=M, dt=dt, dRks=dRks, rotation=rotation)
+    # ln_lklh_func = ln_likelihood
+    #
+    # ln_prior, sample_from_the_prior = get_ln_prior_func()
 
-        start_point_est = {'D1': 1, 'n1': 1e3, 'D2': 1, 'n2': 1e3, 'n12': 1e3, 'alpha': 0.1}
-        alpha_ind = 5
-    else:
-        ln_lklh_func = get_ln_likelihood_func_no_link(
-            ks=ks, M=M, dt=dt, dRks=dRks)
-
-        start_point_est = {'D1': 1, 'n1': 1e3}
-
-    ln_prior, sample_from_the_prior = get_ln_prior_func()
     # If not start point provided, sample a point from the prior
-    if not start_point:
-        start_point = start_point_est
+    # if not start_point:
+    #     start_point = start_point_est
 
     # Sample points from the prior for a test
-    smpl = [sample_from_the_prior(link)['n1'] for i in range(1000)]
+    # smpl = [sample_from_the_prior(link)['n1'] for i in range(1000)]
 
     # print('prior n1 median', np.median(smpl))
 
@@ -1081,21 +1431,22 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, dRks=None, sta
     def minimize_me(args):
         """-ln posterior to minimize"""
         args_dict = {a: args[i] for i, a in enumerate(names)}
-        return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
+        # return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
+        return -ln_posterior(**args_dict)
 
-    def minimize_me_log_params(ln_args):
-        """
-        Same as minimize me, but the args correspond to log of the parameters.
-        This seem to accelerate convergence, when D and n have different scales.
-        """
-        exponentiated = exp(ln_args)
-        # Check for infinite values after exponentiation
-        if np.any(~np.isfinite(exponentiated)):
-            return -np.inf
-
-        args_dict = {a: exponentiated[i] for i, a in enumerate(names)}
-
-        return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
+    # def minimize_me_log_params(ln_args):
+    #     """
+    #     Same as minimize me, but the args correspond to log of the parameters.
+    #     This seem to accelerate convergence, when D and n have different scales.
+    #     """
+    #     exponentiated = exp(ln_args)
+    #     # Check for infinite values after exponentiation
+    #     if np.any(~np.isfinite(exponentiated)):
+    #         return -np.inf
+    #
+    #     args_dict = {a: exponentiated[i] for i, a in enumerate(names)}
+    #
+    #     return -ln_lklh_func(**args_dict) - ln_prior(**args_dict)
 
     # %% Find MLE
     if verbose:
@@ -1158,55 +1509,55 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, dRks=None, sta
         # print(' Hess_inv', det_inv_hess, hess_inv)
         return ln_model_evidence
 
-    def calculate_evidence_integral(points=None):
-        """
-        Calculate the evidence integral by numerical integration without Laplace approximation.
-        Use the found MLE as a single breakpoint in the integration for the link model. Currently deactivated.
-        """
-        if link:
-            return np.nan
-        points_in = points.copy()
-
-        # These intervals need to be updated if the a priori working region changes
-        all_integration_limits = {'D1': [0.01 / 10, 5 * 10], 'D2': [0.01 / 10, 5 * 10],
-                                  'n1': [0.01 / 10, 10 * 10], 'n2': [0.01 / 10, 10 * 10],
-                                  'n12': [0, 10 * 10]}
-
-        # Get the scale of the maximum of the posterior to normalize the integrand
-        # def ln_lklh(x): -mini
-        largest_ln_value = max([-minimize_me(point) for point in points])
-
-        # If fitting the link model, use only 1 breakpoint - the MLE
-        # Else use all break points
-        if link:
-            points = sorted(points_in, key=lambda x: -minimize_me(x))[-1:]
-
-        # Filter break points be removing those that are too close, separately along each axis
-        atol_points = 1e0
-        points = zip(*points)  # combine break points per axis
-        new_points = []
-        for points_1d in points:
-            points_1d = np.sort(points_1d)
-            new_points_1d = [points_1d[0]]
-            for p in points_1d[1:]:
-                if p - new_points_1d[-1] >= atol_points:
-                    new_points_1d.append(p)
-            new_points.append(new_points_1d)
-
-        print('Break points for direct integration:', new_points)
-
-        def integrand(*args):
-            """Renormalize the function before integration"""
-            return exp(-minimize_me(args) - largest_ln_value)
-
-        tol = 1e-1
-        opts = [{'points': el, 'epsabs': tol, 'epsrel': tol} for el in new_points]
-        integration_limits = [all_integration_limits[name] for name in names]
-        res = nquad(integrand, ranges=integration_limits, opts=opts)
-        print('Integration output: ', res)
-        # print('Largest ln value: ', largest_ln_value)
-
-        return log(res[0]) + largest_ln_value
+    # def calculate_evidence_integral(points=None):
+    #     """
+    #     Calculate the evidence integral by numerical integration without Laplace approximation.
+    #     Use the found MLE as a single breakpoint in the integration for the link model. Currently deactivated.
+    #     """
+    #     if link:
+    #         return np.nan
+    #     points_in = points.copy()
+    #
+    #     # These intervals need to be updated if the a priori working region changes
+    #     all_integration_limits = {'D1': [0.01 / 10, 5 * 10], 'D2': [0.01 / 10, 5 * 10],
+    #                               'n1': [0.01 / 10, 10 * 10], 'n2': [0.01 / 10, 10 * 10],
+    #                               'n12': [0, 10 * 10]}
+    #
+    #     # Get the scale of the maximum of the posterior to normalize the integrand
+    #     # def ln_lklh(x): -mini
+    #     largest_ln_value = max([-minimize_me(point) for point in points])
+    #
+    #     # If fitting the link model, use only 1 breakpoint - the MLE
+    #     # Else use all break points
+    #     if link:
+    #         points = sorted(points_in, key=lambda x: -minimize_me(x))[-1:]
+    #
+    #     # Filter break points be removing those that are too close, separately along each axis
+    #     atol_points = 1e0
+    #     points = zip(*points)  # combine break points per axis
+    #     new_points = []
+    #     for points_1d in points:
+    #         points_1d = np.sort(points_1d)
+    #         new_points_1d = [points_1d[0]]
+    #         for p in points_1d[1:]:
+    #             if p - new_points_1d[-1] >= atol_points:
+    #                 new_points_1d.append(p)
+    #         new_points.append(new_points_1d)
+    #
+    #     print('Break points for direct integration:', new_points)
+    #
+    #     def integrand(*args):
+    #         """Renormalize the function before integration"""
+    #         return exp(-minimize_me(args) - largest_ln_value)
+    #
+    #     tol = 1e-1
+    #     opts = [{'points': el, 'epsabs': tol, 'epsrel': tol} for el in new_points]
+    #     integration_limits = [all_integration_limits[name] for name in names]
+    #     res = nquad(integrand, ranges=integration_limits, opts=opts)
+    #     print('Integration output: ', res)
+    #     # print('Largest ln value: ', largest_ln_value)
+    #
+    #     return log(res[0]) + largest_ln_value
 
     verbose_tries = True
     mins = []
@@ -1219,7 +1570,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, dRks=None, sta
             start_point, old_ln_value, success_load = load_MLE_guess(
                 hash_no_trial=hash_no_trial, link=link)
             if not success_load or np.any([not name in start_point for name in names]):
-                start_point = sample_from_the_prior(link)
+                start_point = sample_from_the_prior(names)
                 print(
                     f'Sampling an origin point from the prior:\n', start_point)
             else:
@@ -1233,18 +1584,18 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, dRks=None, sta
         #
 
         else:  # sample from the prior
-            start_point = sample_from_the_prior(link)
+            start_point = sample_from_the_prior(names)
             print(
                 f'Sampling an origin point from the prior:\n', start_point)
 
         # if verbose_tries:
         #     print(f'Starting point: {start_point}')
-        if bl_log_parameter_search:
-            start_point_vals = log(to_list(start_point))
-            fnc = minimize_me_log_params
-        else:
-            start_point_vals = to_list(start_point)
-            fnc = minimize_me
+        # if bl_log_parameter_search:
+        #     start_point_vals = log(to_list(start_point))
+        #     fnc = minimize_me_log_params
+        # else:
+        start_point_vals = to_list(start_point)
+        fnc = minimize_me
 
         min = minimize(fnc, start_point_vals, tol=1e-5, method=method,
                        options=options)
@@ -1271,7 +1622,7 @@ def get_MLE(ks, M, dt, link, hash_no_trial, zs_x=None, zs_y=None, dRks=None, sta
 
         print('Full optimization result:\n', min)
         grad = nd.Gradient(minimize_me)(min.x)
-        grad_norm = max(abs(grad))
+        grad_norm = np.max(abs(grad))
         print('\nGradient in the minimum:\t', grad, '\tMax. norm:\t', grad_norm)
 
         # Store the found point if the hessian is not diagonal (because it's not a new point then)

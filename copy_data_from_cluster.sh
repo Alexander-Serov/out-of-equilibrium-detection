@@ -19,7 +19,8 @@ then
 else
         ssh aserov@tars.pasteur.fr touch --date "'$NEWER_THAN'" start_date
 fi
-echo "Copying results calculated after $NEWER_THAN"
+echo "Started copy on $(date)."
+echo "Copying results calculated after $NEWER_THAN."
 
 # Check if any files need to be copied
 NUM_FILES=`ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l`

@@ -14,6 +14,7 @@ from likelihood import get_MLE
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
 from support import (delete_data, hash_from_dictionary, load_data, save_data,
                      stopwatch, stopwatch_dec)
+from trajectory import Trajectory
 
 max_abs_lg_B_per_M = 2
 
@@ -186,44 +187,54 @@ def average_over_modes(input, dk):
     return out, k_new
 
 
-def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, gamma, dt, angle, L, trial, M,
+def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, dt, angle, L0, trial, M, model,
                                         seed=None, recalculate_trajectory=False,
                                         recalculate_BF=False, verbose=False, true_args=None,
                                         cluster=False, rotation=True):
     """
-    The function combines trajectory simulation and bayes factor calculation to be able to delegate the task to a computing cluster.
+    The function combines trajectory simulation and bayes factor calculation to be able to delegate
+    the task to a computation cluster.
     """
     true_parameters = {name: val for name, val in zip(
-        ('D1 D2 n1 n2 n12 gamma dt angle L trial M'.split()),
-        (D1, D2, n1, n2, n12, gamma, dt, angle, L, trial, M))}
+        ('D1 D2 n1 n2 n12 dt angle L trial M'.split()),
+        (D1, D2, n1, n2, n12, dt, angle, L0, trial, M))}
     lg_BF_val, ln_evidence_with_link, ln_evidence_free = [np.nan] * 3
 
-    hash, _ = hash_from_dictionary(dim=2, parameters=true_parameters)
+    # hash, _ = hash_from_dictionary(dim=2, parameters=true_parameters)
+    #
+    # # Send to cluster if any recalculation
+    # if cluster and (recalculate_trajectory or recalculate_BF):
+    #     loaded = False
+    #     dict_data = {}
+    #     return lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded, dict_data
+    #
+    # # Check if a trajectory exists
+    # _, loaded = load_data(hash)
+    # if cluster and not loaded:
+    #     loaded = False
+    #     dict_data = {}
+    #     return lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded, dict_data
+    #
+    # # Simulate trajectory
+    # t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
+    #     parameters=true_parameters, plot=False, save_figure=False,
+    #     recalculate=recalculate_trajectory, seed=seed)
+    #
+    # # Calculate the Bayes factor
+    # lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded, dict_data = calculate_bayes_factor(
+    #     t=t, dR=dR, true_parameters=true_parameters, hash=hash, recalculate=recalculate_BF,
+    #     plot=False, verbose=verbose, true_args=true_args, cluster=cluster, rotation=rotation)
 
-    # Send to cluster if any recalculation
-    if cluster and (recalculate_trajectory or recalculate_BF):
-        loaded = False
-        dict_data = {}
-        return lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded, dict_data
+    traj = Trajectory(D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, L0=L0, trial=trial,
+                      angle=angle, recalculate=recalculate_trajectory, dry_run=cluster,
+                      model=model)
+    # print(traj.hash)
+    # print(D1, D2, n1, n2, n12, dt, angle, L0, trial, M, model, recalculate_trajectory)
+    loaded = False if np.isnan(traj.lgB) else True
 
-    # Check if a trajectory exists
-    _, loaded = load_data(hash)
-    if cluster and not loaded:
-        loaded = False
-        dict_data = {}
-        return lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded, dict_data
-
-    # Simulate trajectory
-    t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
-        parameters=true_parameters, plot=False, save_figure=False,
-        recalculate=recalculate_trajectory, seed=seed)
-
-    # Calculate the Bayes factor
-    lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded, dict_data = calculate_bayes_factor(
-        t=t, dR=dR, true_parameters=true_parameters, hash=hash, recalculate=recalculate_BF,
-        plot=False, verbose=verbose, true_args=true_args, cluster=cluster, rotation=rotation)
-
-    return lg_BF_val, ln_evidence_with_link, ln_evidence_free, loaded, dict_data
+    return traj.lgB, traj.ln_model_evidence_with_link, traj.ln_model_evidence_no_link, loaded, \
+           None \
+        # ,        loaded,      dict_data
 
 
 def simulate_and_calculate_Bayes_factor_terminal(arg_str, cluster=False):
@@ -238,19 +249,20 @@ def simulate_and_calculate_Bayes_factor_terminal(arg_str, cluster=False):
     arg_parser.add_argument('--n1', action='store', type=float, required=True)
     arg_parser.add_argument('--n2', action='store', type=float, required=True)
     arg_parser.add_argument('--n12', action='store', type=float, required=True)
-    arg_parser.add_argument('--gamma', action='store', type=float, required=True)
+    # arg_parser.add_argument('--gamma', action='store', type=float, required=False)
     arg_parser.add_argument('--dt', action='store', type=float, required=True)
-    arg_parser.add_argument('--angle', action='store', type=float, required=True)
-    arg_parser.add_argument('--L', action='store', type=float, required=True)
+    arg_parser.add_argument('--angle', action='store', type=float, required=False)
+    arg_parser.add_argument('--L0', action='store', type=float, required=True)
     arg_parser.add_argument('--trial', action='store', type=int, required=True)
     arg_parser.add_argument('--M', action='store', type=int, required=True)
+    arg_parser.add_argument('--model', action='store', type=str, required=True)
     arg_parser.add_argument('--recalculate_trajectory',
                             dest='recalculate_trajectory', action='store_true')
     arg_parser.add_argument('--recalculate_BF', dest='recalculate_BF', action='store_true')
     arg_parser.add_argument('--rotation', dest='rotation', action='store_true')
     arg_parser.add_argument('--verbose', dest='verbose', action='store_true')
     arg_parser.set_defaults(recalculate_trajectory=False,
-                            recalculate_BF=False, rotation=True, verbose=False)
+                            recalculate_BF=False, rotation=True, verbose=False, angle=0)
 
     # Read arguments
     args = arg_parser.parse_args(arg_str.split())
@@ -259,9 +271,9 @@ def simulate_and_calculate_Bayes_factor_terminal(arg_str, cluster=False):
     # print(args.recalculate_BF)
 
     return simulate_and_calculate_Bayes_factor(D1=args.D1, D2=args.D2, n1=args.n1, n2=args.n2,
-                                               n12=args.n12, gamma=args.gamma, dt=args.dt,
-                                               angle=args.angle, L=args.L, trial=args.trial,
-                                               M=args.M,
+                                               n12=args.n12, dt=args.dt,
+                                               angle=args.angle, L0=args.L0, trial=args.trial,
+                                               M=args.M, model=args.model,
                                                recalculate_trajectory=args.recalculate_trajectory,
                                                recalculate_BF=args.recalculate_BF,
                                                verbose=args.verbose, true_args=arg_str,

@@ -249,7 +249,7 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
                    L0 * np.cos(phi0), L0 * np.sin(phi0)]) / 2
 
     # Detect time scales of the problem
-    time_scales = np.array([4 * D1 / L0 ** 2, 4 * D2 / L0 ** 2])
+    time_scales = np.array([L0 ** 2 / (4 * D1), L0 ** 2 / (4 * D2)])
     if n12 > 0:
         time_scales = np.append(time_scales, [1 / 2 / n12])
     max_dt = np.min(time_scales) / min_dt_factor

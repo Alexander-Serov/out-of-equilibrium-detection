@@ -15,14 +15,14 @@ from calculate import (calculate_bayes_factor,
                        simulate_and_calculate_Bayes_factor)
 from constants_main import color_sequence
 from simulate import simulate_2_confined_particles_with_fixed_angle_bond
-from support import get_cluster_args_string, set_figure_size
+from support import get_cluster_args_string, set_figure_size, delete_data
 from stopwatch import stopwatch
 
 # Plot parameters
 alpha_shade = 0.25
 confidence_level = 0.95
 height_factor = 0.8
-page_width_frac = 1
+page_width_frac = 0.5
 rows = 1
 lw_theory = 1
 
@@ -109,7 +109,8 @@ def plot_link_strength_dependence(trials=20, n12_range=[1e-1, 1e3], verbose=Fals
                         recalculate_BF=recalculate_BF, rotation=rotation)
                     # print('Calculating with parameters: ', args_string)
                     lg_BF_vals[
-                        ind_M, ind_n12, trial], ln_evidence_with_link, ln_evidence_free, loaded, dict_data = simulate_and_calculate_Bayes_factor_terminal(
+                        ind_M, ind_n12, trial], ln_evidence_with_link, ln_evidence_free, loaded, \
+                    dict_data = simulate_and_calculate_Bayes_factor_terminal(
                         args_string, cluster=cluster)
                     if cluster and not loaded:
                         file.write(args_string)
@@ -478,7 +479,7 @@ def plot_localization_dependence(trials=20, n_range=[1e-2, 100], particle=1, ver
     return lg_BF_vals
 
 
-def plot_angle_dependence(trials=20, verbose=False, recalculate_trajectory=False,
+def plot_angle_dependence(trials=20, points = 2**5 +1, verbose=False, recalculate_trajectory=False,
                           recalculate_BF=False, dry_run=False, cluster=False):
     """
     The function loads data for the specified parameters and plots the diffusivity dependence plot.
@@ -497,14 +498,13 @@ def plot_angle_dependence(trials=20, verbose=False, recalculate_trajectory=False
     n1 = 1
     n2 = 1
     n12 = 30
-    # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
+    # n12 = 10 * n2  # s^{-1}. Something interesting happens between [1e-9; 1e-6]
     Ms = [10, 100, 200]  # required number of points in a trajectory; 100
-    # Ms = [200]
-    # N = 101
-
     dt = 0.05  # s 0.3
     gamma = 1e-8  # viscous drag, in kg/s
-    L = 20
+    L0 = 20
+    model = 'localized_different_D_detect_angle'
+
     # angle = 0
     # trial = 0   # the trial number
     # recalculate = False
@@ -516,7 +516,7 @@ def plot_angle_dependence(trials=20, verbose=False, recalculate_trajectory=False
 
     # D1_ratio_range = np.array([1e-2, 1e2])
     # D1_range = [0.01, 10]
-    points = 50
+    # points = 50
     alphas = np.linspace(-np.pi, np.pi, num=points)
     # a1 = np.pi / 6
     # alphas = np.linspace(a1, a1, num=points)
@@ -526,6 +526,7 @@ def plot_angle_dependence(trials=20, verbose=False, recalculate_trajectory=False
     # if dry_run:
     #     if os.path.exists(arguments_file):
     #         os.unlink(arguments_file)
+    cluster_counter = 0
     with open(arguments_file, 'a') as file:
 
         lg_BF_vals = np.full([len(Ms), points, trials], np.nan)
@@ -540,30 +541,49 @@ def plot_angle_dependence(trials=20, verbose=False, recalculate_trajectory=False
             for ind_M, M in enumerate(Ms):
                 for ind_alpha, alpha in enumerate(alphas):
                     args_string = get_cluster_args_string(
-                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=alpha, L=L,
+                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, dt=dt, angle=alpha, L=L0,
                         trial=trial, M=M, verbose=verbose,
                         recalculate_trajectory=recalculate_trajectory,
-                        recalculate_BF=recalculate_BF, rotation=rotation)
+                        recalculate_BF=recalculate_BF, rotation=rotation, model = model)
                     lg_BF_vals[
-                        ind_M, ind_alpha, trial], ln_evidence_with_link, ln_evidence_free, loaded, dict_data = simulate_and_calculate_Bayes_factor_terminal(
-                        args_string, cluster=cluster)
+                        ind_M, ind_alpha, trial], ln_evidence_with_link, ln_evidence_free, \
+                    loaded, _hash, _, trajectory = \
+                        simulate_and_calculate_Bayes_factor(
+                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, dt=dt, angle=alpha, L0=L0,
+                        trial=trial, M=M, verbose=verbose,
+                        recalculate_trajectory=recalculate_trajectory,
+                        recalculate_BF=recalculate_BF, rotation=rotation, model=model, cluster=cluster)
+                    # print(dict_data)
 
-                    if 'MLE_link' in dict_data:
-                        # print(dict_data['MLE_link'])
-                        # raise RuntimeError()
+                    # if 'MLE_link' in dict_data:
+                    #     # print(dict_data['MLE_link'])
+                    #     # raise RuntimeError()
+                    if trajectory.MLE_link:
+                        # print(trajectory.MLE_link)
                         MLE_alphas[ind_M, ind_alpha,
-                                   trial] = dict_data['MLE_link']['alpha'] / np.pi * 180
+                                   trial] = trajectory.MLE_link['alpha'] / np.pi * 180
                         MLE_alphas_centered[ind_M, ind_alpha,
-                                            trial] = (dict_data['MLE_link'][
+                                            trial] = (trajectory.MLE_link[
                                                           'alpha'] - alpha) / np.pi * 180
 
                     # raise RuntimeError('stop')
                     if cluster and not loaded:
                         file.write(args_string)
+                        # print(args_string)
+                        # print(D1, D2, n1, n2, n12, dt, alpha, L0,
+                        # trial, M, verbose,
+                        # recalculate_trajectory,
+                        # recalculate_BF, rotation, model)
+                        cluster_counter += 1
 
-        if cluster and verbose:
-            print('Warning: verbose was active')
-            # return np.nan
+    if cluster and verbose:
+        print('Warning: verbose was active')
+    if cluster:
+        # Reset start position on cluster
+        position_file = 'position.dat'
+        with open(position_file, 'w') as fp_position:
+            fp_position.write('{0:d}'.format(0))
+    print(f'{cluster_counter} calculations scheduled for the cluster')
 
     # print(lg_BF_vals)
 
@@ -608,17 +628,19 @@ def plot_angle_dependence(trials=20, verbose=False, recalculate_trajectory=False
     plt.xlabel('$\\alpha$, $^\circ$')
     plt.ylabel('Median $\mathrm{lg}(B)$')
     plt.title(
-        f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, n12={n12:.1f}, dt={dt}, L={L}, rotation={rotation}')
+        f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, '
+        f'n12={n12:.1f}, dt={dt}, L={L0}, rotation={rotation}')
 
     plt.legend(loc='best')
     plt.tight_layout()
-    plt.show()
+
 
     fig_folder = 'figures'
-    figname = f'alpha_dependence-weak'
+    figname = f'alpha_dependence'
     figpath = os.path.join(fig_folder, figname)
     plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
     plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+    plt.show()
 
     # %% Plotting alpha inference
     fig = set_figure_size(num=7, rows=rows, page_width_frac=page_width_frac,
@@ -628,19 +650,23 @@ def plot_angle_dependence(trials=20, verbose=False, recalculate_trajectory=False
     median_alphas_centered = np.nanmedian(MLE_alphas_centered, axis=2)
     # print(median_alphas_centered)
     # print(MLE_alphas_centered)
-    if real_trials > 1:
+    if trials > 1:
         CIs = np.full([len(Ms), points, 2], np.nan)
         CIs[:, :, 0] = np.nanquantile(
             MLE_alphas_centered, (1 - confidence_level) / 2, axis=2)  # 0.025
         CIs[:, :, 1] = np.nanquantile(MLE_alphas_centered, 1 - (1 - confidence_level) / 2, axis=2)
     # ax = plt.gca()
 
+    # print(median_alphas_centered)
+    # print(CIs)
+
     for ind_M in range(len(Ms)):
         color = color_sequence[ind_M]
         zorder = 1 + ind_M
-        if real_trials > 1:
+        if trials > 1:
             plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
                              alpha=alpha_shade, color=color, zorder=zorder)
+            # print('Filled')
             # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
             # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
 
@@ -655,26 +681,29 @@ def plot_angle_dependence(trials=20, verbose=False, recalculate_trajectory=False
 
     # plt.xscale('log')
     plt.xlabel('$\\alpha$, $^\circ$')
-    plt.ylabel('Median ($\\hat\\alpha - \\alpha$), $^\circ$')
+    plt.ylabel('$\\hat\\alpha - \\alpha$), $^\circ$')
     plt.title(
-        f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, n12={n12:.1f}, dt={dt}, L={L}, rotation={rotation}')
+        f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, '
+        f'n12={n12:.1f}, dt={dt}, L={L0}, rotation={rotation}')
 
     plt.legend(loc='best')
     plt.tight_layout()
-    plt.show()
+
 
     fig_folder = 'figures'
-    figname = f'angle_dependence-weak'
+    figname = f'angle_inference'
     figpath = os.path.join(fig_folder, figname)
     plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
     plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+    plt.show()
 
     return lg_BF_vals
 
 
 def plot_free_hookean_length_dependence(trials=3, verbose=False,
                                         recalculate_trajectory=False,
-                                        cluster=False, Ms=[100], l0_range=[1e-1, 1e4],
+                                        cluster=False, Ms=[100], l0_range=[1e-1, 1e4], delete_old
+                                        =False,
                                         model='free_same_D'):
     """
     The function loads data for the specified parameters and plots the link strength dependence plot.
@@ -723,7 +752,7 @@ def plot_free_hookean_length_dependence(trials=3, verbose=False,
                     # print('Calculating with parameters: ', args_string)
                     lg_BF_vals[
                         ind_M, ind, trial], ln_evidence_with_link, ln_evidence_free, \
-                    loaded, dict_data = simulate_and_calculate_Bayes_factor(
+                    loaded, dict_data, _hash = simulate_and_calculate_Bayes_factor(
                         D1=D1, D2=D2, n1=n1,
                         n2=n2,
                         n12=n12, dt=dt,
@@ -739,6 +768,7 @@ def plot_free_hookean_length_dependence(trials=3, verbose=False,
 
                     if cluster and not loaded:
                         file.write(args_string)
+
                     # raise RuntimeError('stop')
 
     if cluster and verbose:
@@ -805,10 +835,166 @@ def plot_free_hookean_length_dependence(trials=3, verbose=False,
     return lg_BF_vals
 
 
+def plot_free_hookean_link_strength_dependence(trials=3, n12_range=[1e-1, 1e3], Ms=[100,
+                                                                                    200, 1000],
+                                               verbose=False,
+                                               recalculate_trajectory=False,
+                                               cluster=False, rotation=True, model=
+                                               'free_same_D'):
+    """
+    The function loads data for the specified parameters and plots the link strength dependence plot.
+
+    If dry_run = True, the calculations are not performed, but instead an arguments file is created to be fed into cluster.
+    Note that the means and the confidence intervals are calculated for lg(B), not for B.
+    """
+    # Neeed to specify parameters to be able to load the right files
+
+    # %% Constants
+    # trials = 50  # 20  # 50  # 1000
+    D2 = 0.4  # um^2/s
+    D1 = D2  # 5 * D2  # um^2/s; 0.4
+    n1 = 0
+    n2 = 0
+    # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
+    # Ms = [10, 100, 200, 1000]  # required number of points in a trajectory; 100
+    # N = 101
+
+    dt = 0.05  # s 0.3
+    gamma = 1e-8  # viscous drag, in kg/s
+    L = 5
+    angle = 0
+    # trial = 0   # the trial number
+    # recalculate = False
+
+    arguments_file = 'arguments.dat'
+    # color = [0.1008,    0.4407,    0.7238]
+
+    # Parameters varying in the plot
+
+    # n12_range = [1e-1, 1e3]
+    n12_points = 2 ** 4 + 1  # 50
+    n12s = np.logspace(log10(n12_range[0]), log10(n12_range[1]), num=n12_points)
+
+    # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
+
+    # if cluster:
+    # if os.path.exists(arguments_file):
+    #     os.unlink(arguments_file)
+    with open(arguments_file, 'a') as file:
+
+        lg_BF_vals = np.full([len(Ms), n12_points, trials], np.nan)
+        for trial in trange(trials, desc='Loading/scheduling calculations'):
+
+            for ind_M, M in enumerate(Ms):
+                for ind_n12, n12 in enumerate(n12s):
+                    args_string = get_cluster_args_string(
+                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L,
+                        trial=trial, M=M, verbose=verbose, model=model,
+                        recalculate_trajectory=recalculate_trajectory, rotation=rotation)
+                    # print('Calculating with parameters: ', args_string)
+                    lg_BF_vals[
+                        ind_M, ind_n12, trial], ln_evidence_with_link, ln_evidence_free, \
+                    loaded, dict_data, _hash = simulate_and_calculate_Bayes_factor(
+                        D1=D1, D2=D2, n1=n1,
+                        n2=n2,
+                        n12=n12, dt=dt,
+                        angle=angle, L0=L,
+                        trial=trial,
+                        M=M, model=model,
+                        recalculate_trajectory=recalculate_trajectory,
+                        verbose=verbose,
+                        cluster=cluster,
+                        rotation=rotation)
+
+                    # simulate_and_calculate_Bayes_factor_terminal(
+                    # args_string, cluster=cluster)
+
+                    if cluster and not loaded:
+                        file.write(args_string)
+                    # raise RuntimeError('stop')
+
+            # print('Iteration ', i)
+            # true_parameters = {name: val for name, val in zip(
+            #     ('D1 D2 n1 n2 n12 gamma T dt angle L trial M'.split()),
+            #     (D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M))}
+            #
+            # t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
+            #     true_parameters=true_parameters, plot=False, save_figure=False, recalculate=recalculate, seed=trial_seed)
+
+            # Load the Bayes factor
+
+            # calculate_bayes_factor(
+            #     t=t, dR=dR, true_parameters=true_parameters, hash=hash, recalculate=recalculate,  plot=False, verbose=verbose)
+
+    if cluster and verbose:
+        print('Warning: verbose was active')
+        # return np.nan
+
+    # print(lg_BF_vals)
+
+    # %% Calculating means and CI
+    median_lg_BFs = np.nanmedian(lg_BF_vals, axis=2)
+    # print('mean', median_lg_BFs)
+
+    # BF_vals = 10**lg_BF_vals
+
+    if trials > 1:
+        CIs = np.full([len(Ms), n12_points, 2], np.nan)
+        CIs[:, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=2)  # 0.025
+        CIs[:, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2, axis=2)  # 0.975
+        # print('CIs: ', np.log10(CIs))
+
+    # %% Actual plotting
+    # fig = plt.figure(num=3, clear=True)
+    fig = set_figure_size(num=4, rows=rows, page_width_frac=page_width_frac,
+                          height_factor=height_factor)
+
+    real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=2))
+    # print('real_trials', real_trials)
+    # Confidence intervals
+    # ax = plt.gca()
+    xs = n12s
+    for ind_M in range(len(Ms)):
+        color = color_sequence[ind_M]
+        zorder = len(Ms) - ind_M
+        if real_trials > 1:
+            plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
+                             alpha=alpha_shade, color=color, zorder=zorder)
+            # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
+            # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
+
+        # Mean
+        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
+
+    # Significance levels
+    xlims = plt.xlim()
+    plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+    plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+
+    plt.xscale('log')
+    plt.xlabel('$n_{12}$')
+    plt.ylabel('Median $\mathrm{lg}(B)$')
+    plt.title(
+        f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.2f}, \nn2={n1:.2f}, dt={dt}, '
+        f'L={L}, rotation={rotation}')
+
+    plt.legend(loc='upper left')
+    plt.tight_layout()
+    plt.show()
+
+    fig_folder = 'figures'
+    figname = f'link_dependence-weak'
+    figpath = os.path.join(fig_folder, figname)
+    plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
+    plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+
+    return lg_BF_vals
+
+
 def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
                                       recalculate_trajectory=False,
                                       cluster=False, Ms=[100], l0_range=[1e-1, 1e3],
-                                      eta_range=[1e-2, 1e2]):
+                                      eta_range=[1e-2, 1e2], dt=0.05):
     """
     Plot a contour plot in 2 dimensionless parameters of the problem.
     :param trials:
@@ -839,7 +1025,7 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
     # Ms = [100]  # , 100, 200, 1000]  # required number of points in a trajectory; 100
     # N = 101
 
-    dt = 0.05  # s 0.3
+    # dt = 0.05  # s 0.3
     # L0 = 5
     model = 'free_same_D'
     # trial = 0   # the trial number
@@ -851,26 +1037,29 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
     # color = [0.1008,    0.4407,    0.7238]
 
     mesh_resolution = 2 ** 4 + 1
+    mesh_resolution_l0 = mesh_resolution
+    mesh_resolution_eta = mesh_resolution
 
     # l_range = [1e-1, 1e3]
-    l0s = np.logspace(log10(l0_range[0]), log10(l0_range[1]), num=mesh_resolution)
+    l0s = np.logspace(log10(l0_range[0]), log10(l0_range[1]), num=mesh_resolution_l0)
     # L0s = ls * np.sqrt(D1 * dt)
 
     # eta_range = [1e-2, 1e2]
-    etas = np.logspace(log10(eta_range[0]), log10(eta_range[1]), num=mesh_resolution)
+    etas = np.logspace(log10(eta_range[0]), log10(eta_range[1]), num=mesh_resolution_eta)
     # n12s = etas / dt
     cluster_counter = 0
 
     with open(arguments_file, 'a') as file:
 
-        lg_BF_vals = np.full([len(Ms), mesh_resolution, mesh_resolution, trials], np.nan)
+        lg_BF_vals = np.full([len(Ms), mesh_resolution_eta, mesh_resolution_l0, trials], np.nan)
+        simulation_time = np.empty_like(lg_BF_vals)
         for trial in trange(trials, desc='Loading/scheduling calculations'):
 
             for ind_M, M in enumerate(Ms):
                 for ind_eta, eta in enumerate(etas):
                     n12 = eta / dt
                     for ind_l0, l0 in enumerate(l0s):
-                        L0 = l0 * np.sqrt(D1 * dt)
+                        L0 = l0 * np.sqrt(4 * D1 * dt)
                         args_string = get_cluster_args_string(
                             D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, dt=dt, L=L0,
                             trial=trial, M=M, verbose=verbose, model=model,
@@ -879,18 +1068,21 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
                         # with stopwatch():
                         lg_BF_vals[
                             ind_M, ind_eta, ind_l0, trial], ln_evidence_with_link, \
-                        ln_evidence_free, loaded, dict_data = simulate_and_calculate_Bayes_factor(
-                            D1=D1, D2=D2, n1=n1,
-                            n2=n2,
-                            n12=n12, dt=dt,
-                            angle=0, L0=L0,
-                            trial=trial,
-                            M=M, model=model,
-                            recalculate_trajectory=recalculate_trajectory,
-                            recalculate_BF=False,
-                            verbose=verbose,
-                            cluster=cluster,
-                            rotation=True)
+                        ln_evidence_free, loaded, _hash, simulation_time[
+                            ind_M, ind_eta, ind_l0, trial], dict_data = \
+                            simulate_and_calculate_Bayes_factor(
+                                D1=D1, D2=D2, n1=n1,
+                                n2=n2,
+                                n12=n12, dt=dt,
+                                angle=0, L0=L0,
+                                trial=trial,
+                                M=M, model=model,
+                                recalculate_trajectory=recalculate_trajectory,
+                                recalculate_BF=False,
+                                verbose=verbose,
+                                cluster=cluster,
+                                rotation=True)
+                        #todo: why is rotation here, but not above?
 
                         # simulate_and_calculate_Bayes_factor_terminal(
                         # args_string, cluster=cluster)
@@ -898,7 +1090,8 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
                         if cluster and not loaded:
                             file.write(args_string)
                             cluster_counter += 1
-                        # sys.exit(0)
+
+                        # delete_data(_hash)
 
     if cluster and verbose:
         print('Warning: verbose was active')
@@ -911,69 +1104,205 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
 
     # %% Calculating means and CI
     median_lg_BFs = np.nanmedian(lg_BF_vals, axis=3)
+    median_simulation_time_hours = np.nanmedian(simulation_time, axis=3) / 3600
 
     if trials > 1:
-        CIs = np.full([len(Ms), mesh_resolution, mesh_resolution, 2], np.nan)
+        CIs = np.full([len(Ms), mesh_resolution_eta, mesh_resolution_l0, 2], np.nan)
         CIs[:, :, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=3)  # 0.025
         CIs[:, :, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2,
                                          axis=3)  # 0.975
+        CI_widths =CIs[:, :, :, 1] - CIs[:, :, :, 0]
+        min_CI_width = np.floor(np.nanmin(CI_widths))
+        max_CI_width = np.ceil(np.nanmax(CI_widths))
+
+
 
     # %% Actual plotting
-    fig = set_figure_size(num=3, rows=rows, page_width_frac=page_width_frac,
-                          height_factor=height_factor)
+    for ind_M, M in enumerate(Ms):
+        fig = set_figure_size(num=3 + 3 * ind_M, rows=rows, page_width_frac=page_width_frac,
+                              height_factor=height_factor)
 
-    real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=3))
+        real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=3),axis=(1,2))
+        max_real_trials = np.max(np.sum(~np.isnan(lg_BF_vals), axis=3), axis = (1,2))
 
-    X, Y = np.meshgrid(etas, l0s)
-    # xs = n12s
-    # for ind_M in range(len(Ms)):
-    #
-    #
-    #     if real_trials > 1:
-    #         plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
-    #                          alpha=alpha_shade, color=color, zorder=zorder)
-    #         # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
-    #         # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
+        X, Y = np.meshgrid(etas, l0s)
+        # xs = n12s
+        # for ind_M in range(len(Ms)):
+        #
+        #
+        #     if real_trials > 1:
+        #         plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
+        #                          alpha=alpha_shade, color=color, zorder=zorder)
+        #         # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
+        #         # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
 
-    # Mean
-    ind_M = 0
-    color = color_sequence[ind_M]
-    zorder = len(Ms) - ind_M
-    # plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
-    plt.contourf(X, Y, median_lg_BFs[ind_M, :, :],  # label=f'M={Ms[ind_M]:d}',
-                 zorder=zorder, cmap='inferno', )
-    # levels = range(-10,10))
-    cb = plt.colorbar()
-    cb.set_label('Median $\mathrm{lg}B$')
+        # Mean
+        clims = np.array([-1, 1]) * np.ceil(np.abs(np.nanmax(median_lg_BFs)))
+        levels = np.arange(clims[0], clims[1] + 1, 1)
 
-    # plot special levels
-    lgB_levels = [-1, 1]
-    c_major = plt.contour(X, Y, median_lg_BFs[ind_M, :, :], levels=lgB_levels, colors='k',
-                          linewidths=1)
 
-    # # Significance levels
-    # xlims = plt.xlim()
-    # plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
-    # plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
-    #
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.xlabel(r'$\eta\equiv n_{12}\Delta t$')
-    plt.ylabel(r'$\ell_0\equiv L_0/\sqrt{D\Delta t}$')
+        # ind_M = 0
+        color = color_sequence[ind_M]
+        zorder = len(Ms) - ind_M
+        # plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
+        im = plt.contourf(X, Y, median_lg_BFs[ind_M, :, :].T,  # label=f'M={Ms[ind_M]:d}',
+                          zorder=zorder, cmap='bwr', vmin=clims[0], vmax=clims[1], levels=levels)
+        # levels = range(-10,10))
+        # im.clim(-3,3)
+        cb = plt.colorbar()
+        cb.set_label('Median $\mathrm{lg}B$')
+        # cb.set_clim(-3,3)
 
-    # plt.ylabel('Median $\mathrm{lg}(B)$')
+        # plot special levels
+        lgB_levels = [-1, 0, 1]
+        c_major = plt.contour(X, Y, median_lg_BFs[ind_M, :, :].T, levels=lgB_levels, colors='k',
+                              linewidths=1, linestyles=['-', '--', '-'])
 
-    plt.title(
-        f'trials={real_trials}, M={Ms[ind_M]:d}, D1={D1:.2f},\nD2={D2:.2f}, dt={dt}')
+        # # show parameters where the time step is reduced
+        # eta_change = 1e-2
+        # l0_change = 20
+        # if l0_change >= l0_range[0] and l0_change <= l0_range[1]:
+        #     plt.plot(plt.xlim(), [l0_change] * 2, '--', color='w')
+        # if eta_change >= eta_range[0] and eta_change <= eta_range[1]:
+        #     plt.plot([eta_change] * 2, plt.ylim(), '--', color='w')
 
-    # plt.legend(loc='upper left')
-    plt.tight_layout()
-    plt.show()
+        # # Significance levels
+        # xlims = plt.xlim()
+        # plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+        # plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+        #
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlabel(r'$\eta\equiv n_{12}\Delta t$')
+        plt.ylabel(r'$\ell_0\equiv L_0/\sqrt{4D\Delta t}$')
 
-    fig_folder = 'figures'
-    figname = f'free_hookean_M={Ms[ind_M]:d}'
-    figpath = os.path.join(fig_folder, figname)
-    plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
-    plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+        # plt.ylabel('Median $\mathrm{lg}(B)$')
+
+        str_title = f'trials={real_trials[ind_M]} ({max_real_trials[ind_M]:d}), M={Ms[ind_M]:d}, D1={D1:.2f},\nD2={D2:.2f}, dt={dt}'
+        plt.title(str_title)
+
+        # plt.legend(loc='upper left')
+        plt.tight_layout()
+
+        fig_folder = 'figures'
+        figname = f'free_hookean_M={Ms[ind_M]:d}'
+        figpath = os.path.join(fig_folder, figname)
+        plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
+        plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+
+        plt.show()
+
+        ## === Plot the confidence intervals ===
+        fig = set_figure_size(num=3 + 1 + 3 * ind_M, rows=rows, page_width_frac=page_width_frac,
+                              height_factor=height_factor)
+        # Mean
+        # clims = np.array([-1, 1]) * 6
+        # levels = np.arange(clims[0], clims[1] + 1, 1)
+
+
+        # ind_M = 0
+        color = color_sequence[ind_M]
+        zorder = len(Ms) - ind_M
+        levels = np.arange(min_CI_width,max_CI_width+1,1)
+        # plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
+        im = plt.contourf(X, Y, CI_widths[ind_M, : , :].T, zorder=zorder, cmap='Reds', levels =
+        levels)
+
+        # im.clim(-3,3)
+        cb = plt.colorbar()
+        cb.set_label('$\mathrm{lg}B$, 95 \% CI width')
+        # cb.set_clim(0,max_CI_width)
+
+        # plot special levels
+        # lgB_levels = [-1, 0, 1]
+        # c_major = plt.contour(X, Y, median_lg_BFs[ind_M, :, :].T, levels=lgB_levels, colors='k',
+        #                       linewidths=1, linestyles=['-', '--', '-'])
+
+        # # show parameters where the time step is reduced
+        # if l0_change >= l0_range[0] and l0_change <= l0_range[1]:
+        #     plt.plot(plt.xlim(), [l0_change] * 2, '--', color='w')
+        # if eta_change >= eta_range[0] and eta_change <= eta_range[1]:
+        #     plt.plot([eta_change] * 2, plt.ylim(), '--', color='w')
+
+        # # Significance levels
+        # xlims = plt.xlim()
+        # plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+        # plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+        #
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlabel(r'$\eta\equiv n_{12}\Delta t$')
+        plt.ylabel(r'$\ell_0\equiv L_0/\sqrt{4D\Delta t}$')
+
+        # plt.ylabel('Median $\mathrm{lg}(B)$')
+
+        plt.title(str_title)
+
+        # plt.legend(loc='upper left')
+        plt.tight_layout()
+
+        # fig_folder = 'figures'
+        figname = f'free_hookean_CI_M={Ms[ind_M]:d}'
+        figpath = os.path.join(fig_folder, figname)
+        plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
+        plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+
+        plt.show()
+
+        ## Plot the simulation time
+        fig = set_figure_size(num=3+2 + 3 * ind_M, rows=rows, page_width_frac=page_width_frac,
+                              height_factor=height_factor)
+        # Mean
+        # clims = np.array([-1, 1]) * 6
+        # levels = np.arange(clims[0], clims[1] + 1, 1)
+
+        # ind_M = 0
+        color = color_sequence[ind_M]
+        zorder = len(Ms) - ind_M
+        # plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
+        im = plt.contourf(X, Y, median_simulation_time_hours[ind_M, :, :].T,
+                          # label=f'M={Ms[ind_M]:d}',
+                          zorder=zorder, cmap='bwr')
+        # levels = range(-10,10))
+        # im.clim(-3,3)
+        cb = plt.colorbar()
+        cb.set_label('Simulation time, hours')
+        # cb.set_clim(-3,3)
+
+        # plot special levels
+        # lgB_levels = [-1, 0, 1]
+        c_major = plt.contour(X, Y, median_lg_BFs[ind_M, :, :].T, levels=lgB_levels, colors='k',
+                              linewidths=1, linestyles=['-', '--', '-'])
+
+        # # show parameters where the time step is reduced
+        # if l0_change >= l0_range[0] and l0_change <= l0_range[1]:
+        #     plt.plot(plt.xlim(), [l0_change] * 2, '--', color='w')
+        # if eta_change >= eta_range[0] and eta_change <= eta_range[1]:
+        #     plt.plot([eta_change] * 2, plt.ylim(), '--', color='w')
+
+        # # Significance levels
+        # xlims = plt.xlim()
+        # plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+        # plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+        #
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlabel(r'$\eta\equiv n_{12}\Delta t$')
+        plt.ylabel(r'$\ell_0\equiv L_0/\sqrt{4D\Delta t}$')
+
+        # plt.ylabel('Median $\mathrm{lg}(B)$')
+
+        plt.title(str_title)
+
+        # plt.legend(loc='upper left')
+        plt.tight_layout()
+
+        # fig_folder = 'figures'
+        # figname = f'free_hookean_M={Ms[ind_M]:d}_dt={dt:.2g}'
+        # figpath = os.path.join(fig_folder, figname)
+        # plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
+        # plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+
+        plt.show()
 
     return lg_BF_vals

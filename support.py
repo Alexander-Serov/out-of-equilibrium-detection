@@ -17,6 +17,7 @@ import pandas as pd
 from filelock import FileLock
 from scipy.optimize import root, root_scalar
 from scipy.special import gamma
+from pickle import UnpicklingError
 
 # from calculate import max_abs_lg_B_per_M
 
@@ -55,6 +56,26 @@ def locally_rotate_a_vector(dR, lag):
         RM = get_rotation_matrix(dr)
         rotated[:, j] = RM @ dR[:, j + lag]
     return rotated
+
+def get_cluster_args_string(D1, D2, n1, n2, n12, dt, L, M, model, trial=0,
+                            recalculate_trajectory=False, recalculate_BF=False, verbose=False,
+                            rotation=True, angle=None, gamma = None):
+    args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g}  --dt={dt:g} ' \
+                  '--L={L:g} --trial={trial:d} --M={M} --model={model}'.format(
+        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12,  dt=dt,  L=L, trial=trial,
+        M=M, model = model)
+    if recalculate_trajectory:
+        args_string += ' --recalculate_trajectory'
+    if recalculate_BF:
+        args_string += ' --recalculate_BF'
+    if verbose:
+        args_string += ' --verbose'
+    if rotation:
+        args_string += ' --rotation'
+    if angle is not None:
+        args_string += f' --angle={angle:g}'
+    args_string += '\n'
+    return args_string
 
 
 def _hash_me(*args):
@@ -107,8 +128,8 @@ def load_data(hash):
                 if isinstance(dict_data, dict):
                     loaded = True
                     # print(f'File {filename} loaded successfully')
-            except Exception() as e:
-                print('Load failed with exception', e)
+            except UnpicklingError() as e:
+                print('Unpickling failed with exception', e)
     # else:
     # print(f'Cannot load because file "{filename}" not found')
     # 1
@@ -121,6 +142,7 @@ def delete_data(hash):
     filename = os.path.join(data_folder, 'data_' + hash + '.pyc')
     if os.path.exists(filename):
         os.unlink(filename)
+        print(f'Deleted hash {hash}')
     return
 
 
@@ -182,28 +204,7 @@ def stopwatch_dec(func):
     return wrapper
 
 
-def get_cluster_args_string(D1, D2, n1, n2, n12, dt, L, M, model, trial=0,
-                            recalculate_trajectory=False, recalculate_BF=False, verbose=False,
-                            rotation=True, angle=None, gamma = None):
-    args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g}  --dt={dt:g} ' \
-                  '--L={L:g} --trial={trial:d} --M={M} --model={model}'.format(
-        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12,  dt=dt,  L=L, trial=trial,
-        M=M, model = model)
-    if recalculate_trajectory:
-        args_string += ' --recalculate_trajectory'
-    if recalculate_BF:
-        args_string += ' --recalculate_BF'
-    if verbose:
-        args_string += ' --verbose'
-    if rotation:
-        args_string += ' --rotation'
-    if angle is not None:
-        args_string += f' --angle={angle:f}'
-    args_string += '\n'
-    return args_string
 
-# --gamma={gamma:g}
-# --angle={angle:f}
 
 def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_update=False):
     """

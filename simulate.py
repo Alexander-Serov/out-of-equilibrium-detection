@@ -30,7 +30,8 @@ import sys
 
 def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
                                                         recalculate=False, save_figure=False,
-                                                        file=r'.\trajectory.dat', seed=None):
+                                                        file=r'.\trajectory.dat', seed=None,
+                                                        verbose = False, show = True):
     """
     Simulate the trajectories of two particles connected by 1 spring and only along the x axis.
     Units of measurements:
@@ -47,7 +48,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
     # Load parameters
     # hash_sequence =
     D1, D2, n1, n2, n12, M, dt, angle, L = [parameters[key]
-                                            for key in 'D1 D2 n1 n2 n12 M dt angle L'.split()]
+                                            for key in 'D1 D2 n1 n2 n12 M dt angle L0'.split()]
     N = M
 
     # % Constants
@@ -110,7 +111,6 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
     R = np.zeros((4, N + 1)) * np.nan
     R[:, 0] = R0
 
-
     # Q0 = R0 + Am1 @ a
     # print('R0', R0)
     # print('R init', R)
@@ -158,12 +158,12 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
     # Iterate over steps
     for i in range(N):
         R_next = (
-            U @ np.diag(np.exp(lambdas * dt)) @ Um1 @ R[:, i, None]
-            + U @ np.diag(diag_return_force_integrals) @ Um1 @ a
-            + U @ np.diag(diag_noise_integrals[0, i, :]) @ Um1 @ b[:, 0, None]
-            + U @ np.diag(diag_noise_integrals[1, i, :]) @ Um1 @ b[:, 1, None]
-            + U @ np.diag(diag_noise_integrals[2, i, :]) @ Um1 @ b[:, 2, None]
-            + U @ np.diag(diag_noise_integrals[3, i, :]) @ Um1 @ b[:, 3, None]
+                U @ np.diag(np.exp(lambdas * dt)) @ Um1 @ R[:, i, None]
+                + U @ np.diag(diag_return_force_integrals) @ Um1 @ a
+                + U @ np.diag(diag_noise_integrals[0, i, :]) @ Um1 @ b[:, 0, None]
+                + U @ np.diag(diag_noise_integrals[1, i, :]) @ Um1 @ b[:, 1, None]
+                + U @ np.diag(diag_noise_integrals[2, i, :]) @ Um1 @ b[:, 2, None]
+                + U @ np.diag(diag_noise_integrals[3, i, :]) @ Um1 @ b[:, 3, None]
         )
         R[:, i + 1] = R_next[:, 0]
 
@@ -199,7 +199,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
     save_data(dict_data=dict_data, hash=hash)
 
     if plot:
-        plot_trajectories(t, R, dR, parameters, save=save_figure)
+        plot_trajectories(t, R, dR, parameters, save=save_figure, show = show)
     #
     # return (t, X, dX, Y, dY)
     return t, R, dR, hash
@@ -209,7 +209,8 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
 
 # @profile
 def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, save_figure=False,
-                                     file=r'.\trajectory.dat', seed=None, verbose=False):
+                                     file=r'.\trajectory.dat', seed=None, verbose=False,
+                                     show = True):
     """
     Simulate the trajectories of two particles connected by 1 spring and only along the x axis.
     Units of measurements:
@@ -235,7 +236,8 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     rtol = 1e-6
     alpha = 1  # the degree of implicitness
     bl_loaded = False
-    min_dt_factor = 10  # Make sure dt used in simulation is smaller than system time scale by at least this factor
+    min_dt_factor = 100  # Make sure dt used in simulation is smaller than system time scale by
+    # at least this factor
     # max_terms = 100
     # min_N = int(1e4)
 
@@ -248,25 +250,39 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     R0 = np.array([-L0 * np.cos(phi0), -L0 * np.sin(phi0),
                    L0 * np.cos(phi0), L0 * np.sin(phi0)]) / 2
 
-    # Detect time scales of the problem
-    time_scales = np.array([L0 ** 2 / (4 * D1), L0 ** 2 / (4 * D2)])
+    # Calculate on a smaller mesh if necessary
+    max_eta = 1e-2
+    min_l0 = 20
+    N_intermediate_points = 1
+
+    l0 = L0 / np.sqrt(4 * np.max([D1, D2])* dt)
+    if l0 < min_l0:
+        N_intermediate_points = int(np.ceil(min_l0 ** 2 / l0 ** 2))
+
     if n12 > 0:
-        time_scales = np.append(time_scales, [1 / 2 / n12])
-    max_dt = np.min(time_scales) / min_dt_factor
+        eta = n12 * dt
+        if eta > max_eta:
+            N_intermediate_points = np.max([N_intermediate_points, int(np.ceil(eta / max_eta))])
+    # print(l0, eta)
+
+    # max_dt = np.min(time_scales) / min_dt_factor
     # print('Time scales / dt: ', time_scales / dt)
     # print('dt: {0:.2g}'.format(dt))
     true_dt = dt
-    if dt > max_dt:
-        N_intermediate_points = int(np.ceil(dt / max_dt))
+    if N_intermediate_points > 1:
+        # N_intermediate_points = int(np.ceil(dt / max_dt))
         dt = dt / N_intermediate_points
-        bl_rescaled = True
+        # bl_rescaled = True
         # N *= N_intermediate_points
         if verbose:
             print(
-                f'For the accuracy of simmulations, time step reduced by the factor of '
+                f'For the accuracy of the simulations, time step reduced by the factor of '
                 f'{N_intermediate_points} from {true_dt:.2g} to {dt:.2g}')
     else:
         N_intermediate_points = 1
+
+    if verbose:
+        print(f'l0 = {l0:g}, eta = {eta:g}')
 
     # n1, n2, n12 = np.array([k1, k2, k12]) / gamma
 
@@ -315,6 +331,7 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     # R0 = np.transpose([np.hstack([r10, r20])])
     R = np.zeros((4, N + 1)) * np.nan
     R[:, 0] = R0
+
     # print(f'R array size is {sys.getsizeof(R) / 2 ** 20} MB')
 
     # Q0 = R0 + Am1 @ a
@@ -323,7 +340,7 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
 
     def a(_R):
         out = np.empty((4, 1))
-        R_diff = _R[2:] - _R[:2]    # R2 - R1
+        R_diff = _R[2:] - _R[:2]  # R2 - R1
         out[:2, :] = R_diff
         out[2:, :] = -R_diff
         L = np.linalg.norm(R_diff)
@@ -332,7 +349,6 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
 
     # Generate noise
 
-
     def equation(R_next, dW, R_current):
         R_next = np.reshape(R_next, (-1, 1))
         eqn = R_next - (R_current + (alpha * a(R_next) + (1 - alpha) * a(R_current))
@@ -340,18 +356,19 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
         return np.reshape(eqn, -1)
 
     # Iterate over steps
-    R_next = R0.reshape((4,1))
-    for i in trange(N, desc='Simulating'):
-        for j in range(N_intermediate_points):
-            # Solve the equation
-            # print('a', R[:, i, np.newaxis])
-            # print('g', np.shape(R[:, i, np.newaxis]))
-            dW = np.random.normal(0, np.sqrt(dt), size=(4, 1))
-            sol = root(equation, R_next, args=(dW, R_next))
-            # print(sol)
-            R_next = np.reshape(sol.x, (4,1))
+    R_next = R0.reshape((4, 1))
+    with stopwatch('Simulation'):
+        for i in trange(N, desc='Simulating'):
+            for j in range(N_intermediate_points):
+                # Solve the equation
+                # print('a', R[:, i, np.newaxis])
+                # print('g', np.shape(R[:, i, np.newaxis]))
+                dW = np.random.normal(0, np.sqrt(dt), size=(4, 1))
+                sol = root(equation, R_next, args=(dW, R_next))
+                # print(sol)
+                R_next = np.reshape(sol.x, (4, 1))
 
-        R[:, i + 1] = R_next[:, 0]
+            R[:, i + 1] = R_next[:, 0]
 
     # # print('R not rotated', R)
     # # Rotate the result if necessary. Q is the rotation matrix
@@ -398,17 +415,18 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     # print('R: ', R)
 
     if plot:
-        plot_trajectories(t, R, dR, parameters, save=save_figure)
+        plot_trajectories(t, R, dR, parameters, save=save_figure, show = show)
     #
     # return (t, X, dX, Y, dY)
     return t, R, dR, hash
 
 
-def plot_trajectories(t, R, dR, true_parameters, save=False):
+def plot_trajectories(t, R, dR, true_parameters, save=False, show = True):
     # Calculate and plot the link angle
     ratio = (R[3, :] - R[1, :]) / (R[2, :] - R[0, :])
     angle = 180 / np.pi * np.arctan((R[3, :] - R[1, :]) / (R[2, :] - R[0, :]))
     phi0 = 180 / np.pi * np.arctan2(R[3, 0] - R[1, 0], R[2, 0] - R[0, 0])
+    Ls = np.sqrt(((R[0, :] - R[2, :])) ** 2 + ((R[1, :] - R[3, :])) ** 2)
 
     fig = plt.figure(1, clear=True)
     plt.plot(R[0, :], R[1, :], label='1')
@@ -426,6 +444,12 @@ def plot_trajectories(t, R, dR, true_parameters, save=False):
     plt.ylabel('angle, $\degree$')
     plt.ylim([-90, 90])
 
+    fig = plt.figure(3, clear=True)
+    plt.plot(t, Ls)
+    plt.xlabel('$t$, s')
+    plt.ylabel('L, $\mu$m')
+    plt.ylim(ymin = 0)
+
     # plt.axis('equal')
     # plt.legend()
 
@@ -433,7 +457,7 @@ def plot_trajectories(t, R, dR, true_parameters, save=False):
     dt = t[1] - t[0]
     dR2_baricenter = ((dR[0, :] + dR[2, :]) / 2) ** 2 + ((dR[1, :] + dR[3, :]) / 2) ** 2
     var_estimate_baricenter = np.mean(dR2_baricenter) * \
-        len(dR2_baricenter) / (len(dR2_baricenter) - 1)
+                              len(dR2_baricenter) / (len(dR2_baricenter) - 1)
     var_expected_baricenter = dt * (true_parameters['D1'] + true_parameters['D2'])
     print(
         '\nBaricenter variance estimated (um^2): {0:.2g}\texpected: {1:.2g}\tratio: {2:.2g}'.format(
@@ -441,12 +465,11 @@ def plot_trajectories(t, R, dR, true_parameters, save=False):
             var_estimate_baricenter / var_expected_baricenter))
 
     # Check the evolution of the link length
-    Ls = np.sqrt(((R[0, :] - R[2, :])) ** 2 + ((R[1, :] - R[3, :])) ** 2)
     dLs = Ls[1:] - Ls[:-1]
     L_mean = np.mean(Ls)
     L_var = np.var(dLs, ddof=1)
     L0, n12, D1, D2 = [true_parameters[key] for key in 'L0 n12 D1 D2'.split()]
-    if n12!=0:
+    if n12 != 0:
         L_var_expected = (D1 + D2) / 2 / n12 * (1 - np.exp(-4 * n12 * dt))
     else:
         L_var_expected = np.inf
@@ -465,7 +488,8 @@ def plot_trajectories(t, R, dR, true_parameters, save=False):
         'Link angle variance estimated (rad^2): {0:.2g}\texpected: {1:.2g}\tratio: {2:.2g}'.format(
             angle_var, angle_var_expected, angle_var / angle_var_expected))
 
-    plt.show()
+    if show:
+        plt.show()
     if save:
         plt.savefig('trajectory.png')
 
@@ -483,12 +507,12 @@ if __name__ == '__main__':
                        'D2': 0.4,
                        'n1': 0,
                        'n2': 0,
-                       'n12': 30.0*0,
+                       'n12': 2e-5/0.05,
                        'dt': 0.05,
                        'angle': -np.pi / 3,  # rad
-                       'L0': 0.5,
+                       'L0': 100 * np.sqrt(4 * 0.4 * 0.05),
                        'trial': 0,
-                       'M': 5000}
+                       'M': 2000}
 
     t, R, dR, hash = simulate_a_free_hookean_dumbbell(
         parameters=true_parameters, recalculate=True, verbose=True, plot=True)

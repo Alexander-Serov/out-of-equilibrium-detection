@@ -233,7 +233,7 @@ def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, dt, angle, L0, tria
     loaded = False if np.isnan(traj.lgB) else True
 
     return traj.lgB, traj.ln_model_evidence_with_link, traj.ln_model_evidence_no_link, loaded, \
-           None \
+           traj.hash, traj.simulation_time, traj
         # ,        loaded,      dict_data
 
 

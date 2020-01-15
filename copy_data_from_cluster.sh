@@ -23,28 +23,33 @@ echo "Started copy on $(date)."
 echo "Copying results calculated after $NEWER_THAN."
 
 # Check if any files need to be copied
-NUM_FILES=`ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l`
-echo "Found $NUM_FILES files to copy..."
-if (($NUM_FILES>0))
+#NUM_FILES=`ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l`
+#echo "Found $NUM_FILES files to copy..."
+#if (($NUM_FILES>0))
+#then
+echo "Compressing..."
+ssh aserov@tars.pasteur.fr rm -f ./copy.tar
+# xform is used to drop the absolute path
+ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" -exec "tar rf ./copy.tar --xform='s|.*/||' --show-transformed-names {} +"
+echo "Done!"
+
+# Copy
+if ssh aserov@tars.pasteur.fr "test ./copy.tar";
 then
-        echo "Compressing..."
-        ssh aserov@tars.pasteur.fr rm -f ./copy.tar
-        # xform is used to drop the absolute path
-        ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" -exec "tar rf ./copy.tar --xform='s|.*/||' --show-transformed-names {} +"
-        echo "Done!"
+    scp aserov@tars.pasteur.fr:./copy.tar ./
 
-        # Copy
-        scp aserov@tars.pasteur.fr:./copy.tar ./
+    NUM_FILES=`tar -tf ./copy.tar | wc -l`
+    echo "$NUM_FILES files received from server"
 
-        echo "Extracting..."
-        tar xf ./copy.tar -C $LOCAL_PATH --overwrite
-        echo "Done!"
+    echo "Extracting..."
+    tar xf ./copy.tar -C $LOCAL_PATH --overwrite
+    echo "Done!"
 
-        # Cleaning up
-        rm ./copy.tar
-        ssh aserov@tars.pasteur.fr rm ./copy.tar
+    # Cleaning up
+    rm ./copy.tar
+    ssh aserov@tars.pasteur.fr rm ./copy.tar
 else
-        echo "No files to copy. Finished!"
+    echo "No files to copy. Finished!"
 fi
 
 # Replace old-date file with a new one

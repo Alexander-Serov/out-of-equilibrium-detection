@@ -649,91 +649,34 @@ def new_likelihood_2_particles_x_link_one_point(dRk, k=1, D1=1, D2=3, n1=1, n2=1
 
 def get_ln_likelihood_func_2_particles_x_link(ks, M, dt, dRks=None, rotation=True):
     """
-    Returns a log_10 of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
-    The likelihood is not normalized over these parameters.
-
+    Returns ln of the likelihood function for all input data points as a function of
+    specified parameters. The likelihood is not normalized over these parameters.
     """
 
-    # if isinstance(alpha, int):
-    #     alpha = [alpha]
-
-    # ind = 0
-    # k = ks[ind]
-    # print('new_lklh', new_likelihood_2_particles_x_link_one_point(
-    #     dRk=dRk[:, ind, np.newaxis], k=k, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0))
-
     def ln_lklh(D1, D2, n1, n2, n12, alpha):
-        # ln_lklh_vals = []
-        # if zs_x is not None:
-        #     ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
-        #         z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=0)
-        #         for z, k in zip(zs_x, ks)])
-        # print('ks', ks)
-        # i = 0
-        # print('argstmp',
-        #       dRks[:, i, np.newaxis],
-        #       # ks[i],
-        #       # D1,
-        #       # D2,
-        #       # n1,
-        #       # n2,
-        #       # n12,
-        #       # M,
-        #       # dt)
-        #       )
-
         ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
             dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
             dt=dt, alpha=alpha, rotation=rotation) for i in range(len(ks))]
-
-        # if zs_y is not None:
-        #     ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
-        #         z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=1)
-        #         for z, k in zip(zs_y, ks)])
-
-        test = False
-        if test:
-            ln_lklh_val = ln_lklh_vals[0]
-        else:
-            ln_lklh_val = np.sum(ln_lklh_vals)
-
-        # print('ln_lklh_val', ln_lklh_val)
-        # time.sleep(1)
-
+        ln_lklh_val = np.sum(ln_lklh_vals)
         return ln_lklh_val
-
     return ln_lklh
 
 
 def get_ln_likelihood_func_no_link(ks, M, dt, dRks=None):
     """
-    Returns a log_10 of the likelihood function for all input data points as a function of parameters (D1, D2, n1, n2, n12).
-    The likelihood is not normalized over these parameters.
-
+    Returns ln of the likelihood function for all input data points as a function of
+    specified parameters. The likelihood is not normalized over these parameters.
     """
     D2 = 1
     n2 = 1
     n12 = 0
 
     def ln_lklh(D1, n1):
-        # ln_lklh_vals = []
-        # if zs_x is not None:
-        #     ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
-        #         z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=0)
-        #         for z, k in zip(zs_x, ks)])
-        #
-        # if zs_y is not None:
-        #     ln_lklh_vals.append([likelihood_2_particles_x_link_one_point(
-        #         z=z, k=k, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, alpha=1)
-        #         for z, k in zip(zs_y, ks)])
         ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
             dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
             dt=dt) for i in range(len(ks))]
-
         ln_lklh_val = np.sum(ln_lklh_vals)
-
         return ln_lklh_val
-
     return ln_lklh
 
 
@@ -1606,6 +1549,8 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
                 n = np.floor(abs(alpha) / np.pi + 0.5)
                 return alpha - np.sign(alpha) * n * np.pi, n != 0
 
+
+            alpha_ind = names.index('alpha')
             alpha_old = min.x[alpha_ind]
             alpha, shifted = shift_angle(min.x[alpha_ind])
             if shifted:
@@ -1743,13 +1688,13 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
 
     if success:
         print(
-            f'MLE search with link = {link} converged.\nTaking the best point seen so far:\n',
+            f'MLE search with (link = {link}) converged.\nTaking the best point seen so far:\n',
             (min.fun, MLE))
         try:
             lam, v = np.linalg.eig(np.linalg.inv(min.hess_inv))
             # print(f'Eigenvalues and eigenvectors of the Hessian for the MLE:\n', )
-            print('Eigenvalues of the Hessian: ', lam)
-            print('Eigenvectors: ', v)
+            # print('Eigenvalues of the Hessian: ', lam)
+            # print('Eigenvectors: ', v)
         except Exception:
             pass
         # Save the MLE guess for further use

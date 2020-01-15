@@ -99,8 +99,14 @@ def _hash_me(*args):
     return hash.hexdigest()
 
 
-def hash_from_dictionary(parameters, dim=2):
-    args = [parameters[key] for key in 'D1 D2 n1 n2 n12 M dt L0 angle model'.split()]
+def hash_from_dictionary(parameters, dim=2,use_model = False):
+    """
+    Keeping `use_model` for compatibility with old calculated data. Remove when not necessary.
+    """
+    if use_model:
+        args = [parameters[key] for key in 'D1 D2 n1 n2 n12 M dt L0 angle model'.split()]
+    else:
+        args = [parameters[key] for key in 'D1 D2 n1 n2 n12 M dt L0 angle'.split()]
     args_no_trial = args.copy()
 
     # Allow to have multiple hashes for the same parameters

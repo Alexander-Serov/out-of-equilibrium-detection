@@ -145,7 +145,14 @@ class Trajectory:
     def ln_model_evidence_with_link(self):
         if self._ln_model_evidence_with_link is None:
             # check loaded
-            if '_ln_model_evidence_with_link' in self._dict_data:
+            if self.model in self._dict_data and '_ln_model_evidence_with_link' in \
+                    self._dict_data[self.model]:
+                self._ln_model_evidence_with_link = self._dict_data[self.model][
+                    '_ln_model_evidence_with_link']
+                return self._ln_model_evidence_with_link
+
+            elif '_ln_model_evidence_with_link' in self._dict_data:
+                # This clause is kept for compatibility. Remove later
                 self._ln_model_evidence_with_link = self._dict_data['_ln_model_evidence_with_link']
                 return self._ln_model_evidence_with_link
 
@@ -156,10 +163,14 @@ class Trajectory:
                 # print(self.model)
                 self._MLE_link, self._ln_model_evidence_with_link, min, success = \
                     self._calculate_MLE(link=True, names=self._names_with_link)
-                # model_results =
-                self._dict_data.update({'_MLE_link': self._MLE_link,
-                                        '_ln_model_evidence_with_link':
-                                            self._ln_model_evidence_with_link})
+                model_results = {'_MLE_link': self._MLE_link,
+                                 '_ln_model_evidence_with_link':
+                                     self._ln_model_evidence_with_link}
+                # Save
+                if self.model in self._dict_data:
+                    self._dict_data[self.model].update(model_results)
+                else:
+                    self._dict_data[self.model] = model_results
                 self._save_data()
         return self._ln_model_evidence_with_link
 
@@ -167,7 +178,13 @@ class Trajectory:
     def MLE_link(self):
         if self._MLE_link is None:
             # check loaded
-            if '_MLE_link' in self._dict_data:
+            if self.model in self._dict_data and '_MLE_link' in \
+                    self._dict_data[self.model]:
+                self._MLE_link = self._dict_data[self.model]['_MLE_link']
+                return self._MLE_link
+
+            elif '_MLE_link' in self._dict_data:
+                # This clause is kept for compatibility. Remove later
                 self._MLE_link = self._dict_data['_MLE_link']
                 return self._MLE_link
 
@@ -181,8 +198,14 @@ class Trajectory:
     @property
     def ln_model_evidence_no_link(self):
         if self._ln_model_evidence_no_link is None:
-            # check loaded
-            if '_ln_model_evidence_no_link' in self._dict_data:
+            if self.model in self._dict_data and '_ln_model_evidence_no_link' in \
+                    self._dict_data[self.model]:
+                self._ln_model_evidence_no_link = self._dict_data[self.model][
+                    '_ln_model_evidence_no_link']
+                return self._ln_model_evidence_no_link
+
+            elif '_ln_model_evidence_no_link' in self._dict_data:
+                # This clause is kept for compatibility. Remove later
                 self._ln_model_evidence_no_link = self._dict_data['_ln_model_evidence_no_link']
                 return self._ln_model_evidence_no_link
 
@@ -192,9 +215,16 @@ class Trajectory:
             else:
                 self._MLE_no_link, self._ln_model_evidence_no_link, min, success = \
                     self._calculate_MLE(link=False, names=self._names_no_link)
-                self._dict_data.update({'_MLE_no_link': self._MLE_no_link,
-                                        '_ln_model_evidence_no_link':
-                                            self._ln_model_evidence_no_link})
+
+                # Save
+                model_results = {'_MLE_no_link': self._MLE_no_link,
+                                 '_ln_model_evidence_no_link':
+                                     self._ln_model_evidence_no_link}
+                if self.model in self._dict_data:
+                    self._dict_data[self.model].update(model_results)
+                else:
+                    self._dict_data[self.model] = model_results
+
                 self._save_data()
         return self._ln_model_evidence_no_link
 
@@ -202,7 +232,13 @@ class Trajectory:
     def MLE_no_link(self):
         if self._MLE_no_link is None:
             # check loaded
-            if '_MLE_no_link' in self._dict_data:
+            if self.model in self._dict_data and '_MLE_no_link' in \
+                    self._dict_data[self.model]:
+                self._MLE_no_link = self._dict_data[self.model]['_MLE_no_link']
+                return self._MLE_no_link
+
+            elif '_MLE_no_link' in self._dict_data:
+                # This clause is kept for compatibility. Remove later
                 self._MLE_no_link = self._dict_data['_MLE_no_link']
                 return self._MLE_no_link
 
@@ -217,13 +253,24 @@ class Trajectory:
     def lgB(self):
         if self._lgB is None:
             # check loaded
-            if '_lgB' in self._dict_data:
+            if self.model in self._dict_data and '_lgB' in \
+                    self._dict_data[self.model]:
+                self._lgB = self._dict_data[self.model]['_lgB']
+                return self._lgB
+
+            elif '_lgB' in self._dict_data:
+                # This clause is kept for compatibility. Remove later
                 self._lgB = self._dict_data['_lgB']
                 return self._lgB
 
             # calculate
             self._calculate_bayes_factor()
-            self._dict_data.update({'_lgB': self._lgB})
+            # Save
+            model_results = {'_lgB': self._lgB}
+            if self.model in self._dict_data:
+                self._dict_data[self.model].update(model_results)
+            else:
+                self._dict_data[self.model] = model_results
             self._save_data()
 
         return self._lgB
@@ -235,11 +282,14 @@ class Trajectory:
 
         return self._simulation_time
 
-    def calculate_hash(self):
-        return hash_from_dictionary(parameters=self.parameters, dim=self.dim)
+    def calculate_hash(self, old_hash=False):
+        return hash_from_dictionary(parameters=self.parameters, dim=self.dim, use_model=old_hash)
 
     def _load_data(self):
         self._dict_data, _ = load_data(self._hash)
+        # If not loaded, try with the old hash
+        if 't' not in self._dict_data:
+            self._dict_data, _ = load_data(self.calculate_hash(old_hash=True))
 
     def _save_data(self):
         # self._dict_data, _ = load_data(self._hash)
@@ -306,8 +356,6 @@ class Trajectory:
             print(f'Bayes factor: {self._lgB}')
 
 
-
-
 # Tests
 if __name__ == '__main__':
     # test_traj = Trajectory(n1=0, n2=0, M=100)
@@ -334,4 +382,3 @@ if __name__ == '__main__':
     #       test_traj.MLE_link)
     # print('\nLg Bayes factor for link: ', test_traj.lgB)
     print('\nSimulation time: ', test_traj.simulation_time)
-

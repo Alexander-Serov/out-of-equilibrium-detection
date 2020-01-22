@@ -27,6 +27,53 @@ rows = 1
 lw_theory = 1
 
 
+def plot_1d(xs, ys, CIs,
+            xlabel=None, xscale='linear',
+            ylabel=None, title=None, fig_num=1,
+            figname='figure', labels=None,
+            y_levels=[-1, 1],
+            legend_loc = 'best',
+            ):
+    fig = set_figure_size(num=fig_num, rows=rows, page_width_frac=page_width_frac,
+                          height_factor=height_factor)
+
+    len_Ms = np.shape(CIs)[0]
+    for ind_M in range(len_Ms):
+        color = color_sequence[ind_M]
+        zorder = len_Ms - ind_M
+        # Confidence intervals
+        plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
+                         alpha=alpha_shade, color=color, zorder=zorder)
+        # Mean
+        if labels:
+            plt.plot(xs, ys[ind_M, :], color=color, label=f'M={labels[ind_M]:d}', zorder=zorder)
+        else:
+            plt.plot(xs, ys[ind_M, :], color=color, zorder=zorder)
+
+    # Significance levels
+    if y_levels:
+        xlims = plt.xlim()
+        for lvl in y_levels:
+            plt.plot(xlims, [lvl] * 2, '--', color='k', lw=lw_theory, zorder=0)
+            plt.plot(xlims, [lvl] * 2, '--', color='k', lw=lw_theory, zorder=0)
+
+    if xscale == 'log':
+        plt.xscale('log')
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+
+    plt.legend(loc=legend_loc)
+    plt.tight_layout()
+
+    fig_folder = 'figures'
+    figpath = os.path.join(fig_folder, figname)
+    plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
+    plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+    plt.show()
+
+
 def plot_periodogram(modes_avg, PX_norm_avg, PY_norm_avg, D1, D2, M):
     # Constants
     markersize = 15
@@ -53,147 +100,140 @@ def plot_periodogram(modes_avg, PX_norm_avg, PY_norm_avg, D1, D2, M):
     fig.show()
 
 
-def plot_link_strength_dependence(trials=20, n12_range=[1e-1, 1e3], verbose=False,
+def plot_link_strength_dependence(trials=20, points=2 ** 5 + 1, n12_range=[1e-1, 1e3],
+                                  verbose=False,
                                   recalculate_trajectory=False, recalculate_BF=False, dry_run=False,
                                   cluster=False, rotation=True):
     """
     The function loads data for the specified parameters and plots the link strength dependence plot.
 
-    If dry_run = True, the calculations are not performed, but instead an arguments file is created to be fed into cluster.
+    If dry_run = True, the calculations are not performed, but instead an arguments file is created
+    to be fed into cluster.
     Note that the means and the confidence intervals are calculated for lg(B), not for B.
     """
-    # Neeed to specify parameters to be able to load the right files
-
-    # %% Constants
-    # trials = 50  # 20  # 50  # 1000
+    # Constants
     D2 = 0.4  # um^2/s
     D1 = 5 * D2  # um^2/s; 0.4
     n1 = 1
     n2 = 1
-    # n12 = 10 * n2  # s^{-1}. Somehting interesting happens between [1e-9; 1e-6]
     Ms = [10, 100, 200]  # required number of points in a trajectory; 100
-    # N = 101
-
     dt = 0.05  # s 0.3
     gamma = 1e-8  # viscous drag, in kg/s
-    L = 20
+    L0 = 20
     angle = 0
-    # trial = 0   # the trial number
-    # recalculate = False
-
+    model = 'localized_same_D_detect_angle'
     arguments_file = 'arguments.dat'
-    # color = [0.1008,    0.4407,    0.7238]
 
-    # Parameters varying in the plot
+    # Parameters for the x axis
+    n12s = np.logspace(log10(n12_range[0]), log10(n12_range[1]), num=points)
 
-    # n12_range = [1e-1, 1e3]
-    mesh_points = 50
-    n12s = np.logspace(log10(n12_range[0]), log10(n12_range[1]), num=mesh_points)
+    cluster_counter = 0
+    args_dict = {'D1': D1, 'D2': D2, 'n1': n1, 'n2': n2, 'gamma': gamma,
+                 'dt': dt,
+                 'angle': angle, 'L0': L0,
+                 'verbose': verbose,
+                 'recalculate_trajectory': recalculate_trajectory,
+                 'recalculate_BF': recalculate_BF, 'rotation': rotation,
+                 'cluster': cluster}
 
-    # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
-
-    # if cluster:
-    # if os.path.exists(arguments_file):
-    #     os.unlink(arguments_file)
     with open(arguments_file, 'a') as file:
+        # Calculate with same D
+        args_dict.update({'model': 'localized_same_D_detect_angle'})
+        lg_BF_vals_same_D = np.full([len(Ms), points, trials], np.nan)
 
-        lg_BF_vals = np.full([len(Ms), mesh_points, trials], np.nan)
         for trial in trange(trials, desc='Loading/scheduling calculations'):
+            args_dict.update({'trial': trial})
 
             for ind_M, M in enumerate(Ms):
+                args_dict.update({'M': M})
+
                 for ind_n12, n12 in enumerate(n12s):
-                    args_string = get_cluster_args_string(
-                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L,
-                        trial=trial, M=M, verbose=verbose,
-                        recalculate_trajectory=recalculate_trajectory,
-                        recalculate_BF=recalculate_BF, rotation=rotation)
-                    # print('Calculating with parameters: ', args_string)
-                    lg_BF_vals[
+                    args_dict.update({'n12': n12})
+                    lg_BF_vals_same_D[
                         ind_M, ind_n12, trial], ln_evidence_with_link, ln_evidence_free, loaded, \
-                    dict_data = simulate_and_calculate_Bayes_factor_terminal(
-                        args_string, cluster=cluster)
+                    _hash, _, trajectory = simulate_and_calculate_Bayes_factor(**args_dict)
                     if cluster and not loaded:
-                        file.write(args_string)
-                    # raise RuntimeError('stop')
+                        file.write(get_cluster_args_string(**args_dict))
+                        cluster_counter += 1
 
-            # print('Iteration ', i)
-            # true_parameters = {name: val for name, val in zip(
-            #     ('D1 D2 n1 n2 n12 gamma T dt angle L trial M'.split()),
-            #     (D1, D2, n1, n2, n12, gamma, T, dt, angle, L, trial, M))}
-            #
-            # t, R, dR, hash = simulate_2_confined_particles_with_fixed_angle_bond(
-            #     true_parameters=true_parameters, plot=False, save_figure=False, recalculate=recalculate, seed=trial_seed)
+        # Calculate with different D
+        args_dict.update({'model': 'localized_different_D_detect_angle'})
+        lg_BF_vals_different_D = np.full([len(Ms), points, trials], np.nan)
 
-            # Load the Bayes factor
+        for trial in trange(trials, desc='Loading/scheduling calculations'):
+            args_dict.update({'trial': trial})
 
-            # calculate_bayes_factor(
-            #     t=t, dR=dR, true_parameters=true_parameters, hash=hash, recalculate=recalculate,  plot=False, verbose=verbose)
+            for ind_M, M in enumerate(Ms):
+                args_dict.update({'M': M})
+
+                for ind_n12, n12 in enumerate(n12s):
+                    args_dict.update({'n12': n12})
+                    lg_BF_vals_different_D[
+                        ind_M, ind_n12, trial], ln_evidence_with_link, ln_evidence_free, loaded, \
+                    _hash, _, trajectory = simulate_and_calculate_Bayes_factor(**args_dict)
+                    if cluster and not loaded:
+                        file.write(get_cluster_args_string(**args_dict))
+                        cluster_counter += 1
 
     if cluster and verbose:
         print('Warning: verbose was active')
-        # return np.nan
+    if cluster:
+        # Reset start position on cluster
+        position_file = 'position.dat'
+        with open(position_file, 'w') as fp_position:
+            fp_position.write('{0:d}'.format(0))
+    print(f'{cluster_counter} calculations scheduled for the cluster')
 
-    # print(lg_BF_vals)
-
-    # %% Calculating means and CI
-    median_lg_BFs = np.nanmedian(lg_BF_vals, axis=2)
-    # print('mean', median_lg_BFs)
-
-    # BF_vals = 10**lg_BF_vals
+    # Same D
+    median_lg_BFs_same_D = np.nanmedian(lg_BF_vals_same_D, axis=2)
 
     if trials > 1:
-        CIs = np.full([len(Ms), mesh_points, 2], np.nan)
-        CIs[:, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=2)  # 0.025
-        CIs[:, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2, axis=2)  # 0.975
-        # print('CIs: ', np.log10(CIs))
-
-    # %% Actual plotting
-    # fig = plt.figure(num=3, clear=True)
-    fig = set_figure_size(num=3, rows=rows, page_width_frac=page_width_frac,
-                          height_factor=height_factor)
-
-    real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=2))
-    # print('real_trials', real_trials)
-    # Confidence intervals
-    # ax = plt.gca()
+        CIs_same_D = np.full([len(Ms), points, 2], np.nan)
+        CIs_same_D[:, :, 0] = np.nanquantile(lg_BF_vals_same_D,
+                                             (1 - confidence_level) / 2, axis=2)  # 0.025
+        CIs_same_D[:, :, 1] = np.nanquantile(lg_BF_vals_same_D,
+                                             1 - (1 - confidence_level) / 2, axis=2)  # 0.975
     xs = n12s / n1
-    for ind_M in range(len(Ms)):
-        color = color_sequence[ind_M]
-        zorder = len(Ms) - ind_M
-        if real_trials > 1:
-            plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
-                             alpha=alpha_shade, color=color, zorder=zorder)
-            # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
-            # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
+    real_trials = np.min(np.sum(~np.isnan(lg_BF_vals_same_D), axis=2))
 
-        # Mean
-        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
+    # Actual plotting
+    plot_1d(xs=xs, ys=median_lg_BFs_same_D, CIs=CIs_same_D,
+            fig_num=3,
+            xlabel='$n_{12}/n_1$', xscale='log',
+            ylabel='$\mathrm{lg}B_\mathrm{en}$, same D partner v. no link',
+            title=f"trials={real_trials}, D1={D1:.2f}, D2={D2:.2f},n1={n1:.2f}, "
+            f"\nn2={n1:.2f}, dt={dt}, "
+            f"L0={L0}, rotation={rotation}",
+            figname=f'link_dependence-link-or-no-link',
+            labels=Ms)
 
-    # Significance levels
-    xlims = plt.xlim()
-    plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
-    plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+    # Energy transfer v. identical partner
+    lg_BF_vals_energy_transfer = lg_BF_vals_different_D - lg_BF_vals_same_D
+    median_lg_BFs_energy_transfer = np.nanmedian(lg_BF_vals_energy_transfer, axis=2)
 
-    plt.xscale('log')
-    plt.xlabel('$n_{12}/n_1$')
-    plt.ylabel('Median $\mathrm{lg}(B)$')
-    plt.title(
-        f"trials={real_trials}, D1={D1:.2f}, D2={D2:.2f},n1={n1:.2f}, \nn2={n1:.2f}, dt={dt}, L={L}, rotation={rotation}")
+    if trials > 1:
+        CIs_energy_transfer = np.full([len(Ms), points, 2], np.nan)
+        CIs_energy_transfer[:, :, 0] = np.nanquantile(lg_BF_vals_energy_transfer,
+                                                      (1 - confidence_level) / 2, axis=2)  # 0.025
+        CIs_energy_transfer[:, :, 1] = np.nanquantile(lg_BF_vals_energy_transfer,
+                                                      1 - (1 - confidence_level) / 2,
+                                                      axis=2)  # 0.975
+    real_trials = np.min(np.sum(~np.isnan(lg_BF_vals_energy_transfer), axis=2))
 
-    plt.legend(loc='upper left')
-    plt.tight_layout()
-    plt.show()
+    plot_1d(xs=xs, ys=median_lg_BFs_energy_transfer, CIs=CIs_energy_transfer,
+            fig_num=4,
+            xlabel='$n_{12}/n_1$', xscale='log',
+            ylabel='$\mathrm{lg}B$, energy transfer v. same D partner',
+            title=f"trials={real_trials}, D1={D1:.2f}, D2={D2:.2f},n1={n1:.2f}, "
+            f"\nn2={n1:.2f}, dt={dt}, "
+            f"L0={L0}, rotation={rotation}",
+            figname=f'link_dependence-energy-transfer',
+            labels=Ms,
+            legend_loc='upper left',
+            )
 
-    fig_folder = 'figures'
-    figname = f'link_dependence-weak'
-    figpath = os.path.join(fig_folder, figname)
-    plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
-    plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
 
-    return lg_BF_vals
-
-
-def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False,
+def plot_diffusivity_dependence(trials=20, points=2 ** 5 + 1, D1_range=[0.01, 10], verbose=False,
                                 recalculate_trajectory=False, recalculate_BF=False, dry_run=False,
                                 cluster=False, rotation=True):
     """
@@ -217,7 +257,7 @@ def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False,
 
     dt = 0.05  # s 0.3
     gamma = 1e-8  # viscous drag, in kg/s
-    L = 20
+    L0 = 20
     angle = 0
     # trial = 0   # the trial number
     # recalculate = False
@@ -229,96 +269,145 @@ def plot_diffusivity_dependence(trials=20, D1_range=[0.01, 10], verbose=False,
 
     # D1_ratio_range = np.array([1e-2, 1e2])
     # D1_range = [0.01, 10]
-    D1_points = 50
-    D1s = np.logspace(log10(D1_range[0]), log10(D1_range[1]), num=D1_points)
+    # D1_points = 50
+    D1s = np.logspace(log10(D1_range[0]), log10(D1_range[1]), num=points)
 
-    # k1, k2, k12 = np.array([n1, n2, n12]) * gamma
+    cluster_counter = 0
+    args_dict = {'D2': D2, 'n1': n1, 'n2': n2, 'n12': n12, 'gamma': gamma,
+                 'dt': dt,
+                 'angle': angle, 'L0': L0,
+                 'verbose': verbose,
+                 'recalculate_trajectory': recalculate_trajectory,
+                 'recalculate_BF': recalculate_BF, 'rotation': rotation,
+                 'cluster': cluster}
 
-    # if dry_run:
-    #     if os.path.exists(arguments_file):
-    #         os.unlink(arguments_file)
     with open(arguments_file, 'a') as file:
-
-        lg_BF_vals = np.full([len(Ms), D1_points, trials], np.nan)
-
+        # Calculate with same D
+        args_dict.update({'model': 'localized_same_D_detect_angle'})
+        lg_BF_vals_same_D = np.full([len(Ms), points, trials], np.nan)
         for trial in trange(trials, desc='Loading/scheduling calculations'):
-            # if seed is not None:
-            #     trial_seed = seed + trial
-            # else:
-            #     trial_seed = None
+            args_dict.update({'trial': trial})
+
             for ind_M, M in enumerate(Ms):
+                args_dict.update({'M': M})
+
                 for ind_D1, D1 in enumerate(D1s):
-                    args_string = get_cluster_args_string(
-                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L,
-                        trial=trial, M=M, verbose=verbose,
-                        recalculate_trajectory=recalculate_trajectory,
-                        recalculate_BF=recalculate_BF, rotation=rotation)
-                    lg_BF_vals[
-                        ind_M, ind_D1, trial], ln_evidence_with_link, ln_evidence_free, loaded, dict_data = simulate_and_calculate_Bayes_factor_terminal(
-                        args_string, cluster=cluster)
+                    args_dict.update({'D1': D1})
+                    # args_string = get_cluster_args_string(
+                    #     D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L,
+                    #     trial=trial, M=M, verbose=verbose,
+                    #     recalculate_trajectory=recalculate_trajectory,
+                    #     recalculate_BF=recalculate_BF, rotation=rotation)
+                    lg_BF_vals_same_D[
+                        ind_M, ind_D1, trial], ln_evidence_with_link, ln_evidence_free, loaded, \
+                    _hash, _, trajectory = simulate_and_calculate_Bayes_factor(
+                        **args_dict)
                     if cluster and not loaded:
-                        file.write(args_string)
+                        file.write(get_cluster_args_string(**args_dict))
+                        cluster_counter += 1
 
-        if cluster and verbose:
-            print('Warning: verbose was active')
-            # return np.nan
+        # Calculate with different D
+        args_dict.update({'model': 'localized_different_D_detect_angle'})
+        lg_BF_vals_different_D = np.full([len(Ms), points, trials], np.nan)
+        for trial in trange(trials, desc='Loading/scheduling calculations'):
+            args_dict.update({'trial': trial})
 
-    # print(lg_BF_vals)
+            for ind_M, M in enumerate(Ms):
+                args_dict.update({'M': M})
 
-    # %% Calculating means and CI
-    median_lg_BFs = np.nanmedian(lg_BF_vals, axis=2)
-    # print('mean', median_lg_BFs)
+                for ind_D1, D1 in enumerate(D1s):
+                    args_dict.update({'D1': D1})
+                    # args_string = get_cluster_args_string(
+                    #     D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, gamma=gamma, dt=dt, angle=angle, L=L,
+                    #     trial=trial, M=M, verbose=verbose,
+                    #     recalculate_trajectory=recalculate_trajectory,
+                    #     recalculate_BF=recalculate_BF, rotation=rotation)
+                    lg_BF_vals_different_D[
+                        ind_M, ind_D1, trial], ln_evidence_with_link, ln_evidence_free, loaded, \
+                    _hash, _, trajectory = simulate_and_calculate_Bayes_factor(
+                        **args_dict)
+                    if cluster and not loaded:
+                        file.write(get_cluster_args_string(**args_dict))
+                        cluster_counter += 1
 
-    # BF_vals = 10**lg_BF_vals
+    if cluster and verbose:
+        print('Warning: verbose was active')
+    if cluster:
+        # Reset start position on cluster
+        position_file = 'position.dat'
+        with open(position_file, 'w') as fp_position:
+            fp_position.write('{0:d}'.format(0))
+    print(f'{cluster_counter} calculations scheduled for the cluster')
+
+    # Same D
+    median_lg_BFs_same_D = np.nanmedian(lg_BF_vals_same_D, axis=2)
 
     if trials > 1:
-        CIs = np.full([len(Ms), D1_points, 2], np.nan)
-        CIs[:, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=2)  # 0.025
-        CIs[:, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2, axis=2)  # 0.975
-        # print('CIs: ', np.log10(CIs))
-
-    # %% Actual plotting
-    fig = set_figure_size(num=4, rows=rows, page_width_frac=page_width_frac,
-                          height_factor=height_factor)
-
-    # Confidence intervals
-    real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=2))
-    # ax = plt.gca()
+        CIs_same_D = np.full([len(Ms), points, 2], np.nan)
+        CIs_same_D[:, :, 0] = np.nanquantile(lg_BF_vals_same_D,
+                                             (1 - confidence_level) / 2, axis=2)  # 0.025
+        CIs_same_D[:, :, 1] = np.nanquantile(lg_BF_vals_same_D,
+                                             1 - (1 - confidence_level) / 2, axis=2)  # 0.975
     xs = D1s / D2
-    for ind_M in range(len(Ms)):
-        color = color_sequence[ind_M]
-        zorder = len(Ms) - ind_M
-        if real_trials > 1:
-            plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
-                             alpha=alpha_shade, color=color, zorder=zorder)
-            # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
-            # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
+    real_trials = np.min(np.sum(~np.isnan(lg_BF_vals_same_D), axis=2))
 
-        # Mean
-        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
+    # Actual plotting
+    plot_1d(xs=xs, ys=median_lg_BFs_same_D, CIs=CIs_same_D,
+            fig_num=4,
+            xlabel='$D_1/D_2$', xscale='log',
+            ylabel='$\mathrm{lg}B$, same D partner v. no link',
+            title=f'trials={real_trials}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, n12={n12:.1f}, '
+            f'dt={dt}, L={L0}, rotation={rotation}',
+            figname=f'diffusivity_dependence-link-or-no-link',
+            labels=Ms)
 
-    # Significance levels
-    xlims = plt.xlim()
-    plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
-    plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
+    # Energy transfer v. identical partner
+    lg_BF_vals_energy_transfer = lg_BF_vals_different_D - lg_BF_vals_same_D
+    median_lg_BFs_energy_transfer = np.nanmedian(lg_BF_vals_energy_transfer, axis=2)
 
-    plt.xscale('log')
-    plt.xlabel('$D_1/D_2$')
-    plt.ylabel('Median $\mathrm{lg}(B)$')
-    plt.title(
-        f'trials={real_trials}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, n12={n12:.1f}, dt={dt}, L={L}, rotation={rotation}')
+    if trials > 1:
+        CIs_energy_transfer = np.full([len(Ms), points, 2], np.nan)
+        CIs_energy_transfer[:, :, 0] = np.nanquantile(lg_BF_vals_energy_transfer,
+                                                      (1 - confidence_level) / 2, axis=2)  # 0.025
+        CIs_energy_transfer[:, :, 1] = np.nanquantile(lg_BF_vals_energy_transfer,
+                                                      1 - (1 - confidence_level) / 2,
+                                                      axis=2)  # 0.975
+    real_trials = np.min(np.sum(~np.isnan(lg_BF_vals_energy_transfer), axis=2))
 
-    plt.legend(loc='best')
-    plt.tight_layout()
-    plt.show()
+    plot_1d(xs=xs, ys=median_lg_BFs_energy_transfer, CIs=CIs_energy_transfer,
+            fig_num=5,
+            xlabel='$D_1/D_2$', xscale='log',
+            ylabel='$\mathrm{lg}B_\mathrm{en}$, energy transfer v. same D partner',
+            title=f'trials={real_trials}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, n12={n12:.1f}, '
+            f'dt={dt}, L={L0}, rotation={rotation}',
+            figname=f'diffusivity_dependence-energy-transfer',
+            labels=Ms)
 
-    fig_folder = 'figures'
-    figname = f'diffusivity_dependence-weak'
-    figpath = os.path.join(fig_folder, figname)
-    plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
-    plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
-
-    return lg_BF_vals
+    #
+    #
+    # # %% Calculating means and CI
+    # median_lg_BFs = np.nanmedian(lg_BF_vals, axis=2)
+    # # print('mean', median_lg_BFs)
+    #
+    # # BF_vals = 10**lg_BF_vals
+    #
+    # if trials > 1:
+    #     CIs = np.full([len(Ms), D1_points, 2], np.nan)
+    #     CIs[:, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=2)  # 0.025
+    #     CIs[:, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2, axis=2)  # 0.975
+    #     # print('CIs: ', np.log10(CIs))
+    #
+    #
+    # real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=2))
+    # # %% Actual plotting
+    # plot_1d(xs=xs, ys=median_lg_BFs, CIs=CIs,
+    #         fig_num=4,
+    #         xlabel='$D_1/D_2$', xscale='log',
+    #         ylabel='$\mathrm{lg}B$, same D partner v. no link',
+    #         title=f'trials={real_trials}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, n12={n12:.1f}, '
+    #         f'dt={dt}, L={L0}, rotation={rotation}',
+    #         figname=f'diffusivity_dependence-weak',
+    #         labels=Ms)
 
 
 def plot_localization_dependence(trials=20, n_range=[1e-2, 100], particle=1, verbose=False,
@@ -479,7 +568,7 @@ def plot_localization_dependence(trials=20, n_range=[1e-2, 100], particle=1, ver
     return lg_BF_vals
 
 
-def plot_angle_dependence(trials=20, points = 2**5 +1, verbose=False, recalculate_trajectory=False,
+def plot_angle_dependence(trials=20, points=2 ** 5 + 1, verbose=False, recalculate_trajectory=False,
                           recalculate_BF=False, dry_run=False, cluster=False):
     """
     The function loads data for the specified parameters and plots the diffusivity dependence plot.
@@ -544,20 +633,17 @@ def plot_angle_dependence(trials=20, points = 2**5 +1, verbose=False, recalculat
                         D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, dt=dt, angle=alpha, L=L0,
                         trial=trial, M=M, verbose=verbose,
                         recalculate_trajectory=recalculate_trajectory,
-                        recalculate_BF=recalculate_BF, rotation=rotation, model = model)
+                        recalculate_BF=recalculate_BF, rotation=rotation, model=model)
                     lg_BF_vals[
                         ind_M, ind_alpha, trial], ln_evidence_with_link, ln_evidence_free, \
                     loaded, _hash, _, trajectory = \
                         simulate_and_calculate_Bayes_factor(
-                        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, dt=dt, angle=alpha, L0=L0,
-                        trial=trial, M=M, verbose=verbose,
-                        recalculate_trajectory=recalculate_trajectory,
-                        recalculate_BF=recalculate_BF, rotation=rotation, model=model, cluster=cluster)
-                    # print(dict_data)
+                            D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, dt=dt, angle=alpha, L0=L0,
+                            trial=trial, M=M, verbose=verbose,
+                            recalculate_trajectory=recalculate_trajectory,
+                            recalculate_BF=recalculate_BF, rotation=rotation, model=model,
+                            cluster=cluster)
 
-                    # if 'MLE_link' in dict_data:
-                    #     # print(dict_data['MLE_link'])
-                    #     # raise RuntimeError()
                     if trajectory.MLE_link:
                         # print(trajectory.MLE_link)
                         MLE_alphas[ind_M, ind_alpha,
@@ -569,11 +655,6 @@ def plot_angle_dependence(trials=20, points = 2**5 +1, verbose=False, recalculat
                     # raise RuntimeError('stop')
                     if cluster and not loaded:
                         file.write(args_string)
-                        # print(args_string)
-                        # print(D1, D2, n1, n2, n12, dt, alpha, L0,
-                        # trial, M, verbose,
-                        # recalculate_trajectory,
-                        # recalculate_BF, rotation, model)
                         cluster_counter += 1
 
     if cluster and verbose:
@@ -585,119 +666,42 @@ def plot_angle_dependence(trials=20, points = 2**5 +1, verbose=False, recalculat
             fp_position.write('{0:d}'.format(0))
     print(f'{cluster_counter} calculations scheduled for the cluster')
 
-    # print(lg_BF_vals)
-
     # %% Calculating means and CI
     real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=2))
     median_lg_BFs = np.nanmedian(lg_BF_vals, axis=2)
-    # print('mean', median_lg_BFs)
-
-    # BF_vals = 10**lg_BF_vals
 
     if trials > 1:
         CIs = np.full([len(Ms), points, 2], np.nan)
         CIs[:, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=2)  # 0.025
         CIs[:, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2, axis=2)  # 0.975
-        # print('CIs: ', np.log10(CIs))
+    xs = alphas / np.pi * 180
 
     # %% Plotting Bayes factors
-    fig = set_figure_size(num=6, rows=rows, page_width_frac=page_width_frac,
-                          height_factor=height_factor)
-
-    # Confidence intervals
-    # ax = plt.gca()
-    xs = alphas / np.pi * 180
-    for ind_M in range(len(Ms)):
-        color = color_sequence[ind_M]
-        zorder = len(Ms) - ind_M
-        if trials > 1:
-            plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
-                             alpha=alpha_shade, color=color, zorder=zorder)
-            # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
-            # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
-
-        # Mean
-        plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
-
-    # Significance levels
-    xlims = plt.xlim()
-    plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
-    plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
-
-    # plt.xscale('log')
-    plt.xlabel('$\\alpha$, $^\circ$')
-    plt.ylabel('Median $\mathrm{lg}(B)$')
-    plt.title(
-        f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, '
-        f'n12={n12:.1f}, dt={dt}, L={L0}, rotation={rotation}')
-
-    plt.legend(loc='best')
-    plt.tight_layout()
-
-
-    fig_folder = 'figures'
-    figname = f'alpha_dependence'
-    figpath = os.path.join(fig_folder, figname)
-    plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
-    plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
-    plt.show()
+    plot_1d(xs=xs, ys=median_lg_BFs, CIs=CIs,
+            fig_num=6,
+            xlabel='$\\alpha$, $^\circ$',
+            ylabel='Median $\mathrm{lg}(B)$',
+            title=f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, '
+            f'n12={n12:.1f}, dt={dt}, L={L0}, rotation={rotation}',
+            figname=f'alpha_dependence',
+            labels=Ms)
 
     # %% Plotting alpha inference
-    fig = set_figure_size(num=7, rows=rows, page_width_frac=page_width_frac,
-                          height_factor=height_factor)
-
-    # Confidence intervals
     median_alphas_centered = np.nanmedian(MLE_alphas_centered, axis=2)
-    # print(median_alphas_centered)
-    # print(MLE_alphas_centered)
     if trials > 1:
         CIs = np.full([len(Ms), points, 2], np.nan)
         CIs[:, :, 0] = np.nanquantile(
             MLE_alphas_centered, (1 - confidence_level) / 2, axis=2)  # 0.025
         CIs[:, :, 1] = np.nanquantile(MLE_alphas_centered, 1 - (1 - confidence_level) / 2, axis=2)
-    # ax = plt.gca()
 
-    # print(median_alphas_centered)
-    # print(CIs)
-
-    for ind_M in range(len(Ms)):
-        color = color_sequence[ind_M]
-        zorder = 1 + ind_M
-        if trials > 1:
-            plt.fill_between(xs, CIs[ind_M, :, 0], CIs[ind_M, :, 1],
-                             alpha=alpha_shade, color=color, zorder=zorder)
-            # print('Filled')
-            # plt.plot(n12s, np.log10(CIs[:, 0]), '-', color='g', alpha=alpha_shade)
-            # plt.plot(n12s, np.log10(CIs[:, 1]), '-', color='g', alpha=alpha_shade)
-
-        # Mean
-        plt.plot(xs, median_alphas_centered[ind_M, :],
-                 color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
-
-    # Significance levels
-    xlims = plt.xlim()
-    # plt.plot(xlims, [-1] * 2, '--', color='k', lw=lw_theory, zorder=0)
-    # plt.plot(xlims, [1] * 2, '--', color='k', lw=lw_theory, zorder=0)
-
-    # plt.xscale('log')
-    plt.xlabel('$\\alpha$, $^\circ$')
-    plt.ylabel('$\\hat\\alpha - \\alpha$), $^\circ$')
-    plt.title(
-        f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, '
-        f'n12={n12:.1f}, dt={dt}, L={L0}, rotation={rotation}')
-
-    plt.legend(loc='best')
-    plt.tight_layout()
-
-
-    fig_folder = 'figures'
-    figname = f'angle_inference'
-    figpath = os.path.join(fig_folder, figname)
-    plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
-    plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
-    plt.show()
-
-    return lg_BF_vals
+    plot_1d(xs=xs, ys=median_alphas_centered, CIs=CIs,
+            fig_num=7,
+            xlabel='$\\alpha$, $^\circ$',
+            ylabel='$\\hat\\alpha - \\alpha$), $^\circ$',
+            title=f'trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n1={n1:.1f},\nn2={n1:.1f}, '
+            f'n12={n12:.1f}, dt={dt}, L={L0}, rotation={rotation}',
+            figname=f'angle_inference',
+            labels=Ms, y_levels=None)
 
 
 def plot_free_hookean_length_dependence(trials=3, verbose=False,
@@ -1082,7 +1086,7 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
                                 verbose=verbose,
                                 cluster=cluster,
                                 rotation=True)
-                        #todo: why is rotation here, but not above?
+                        # todo: why is rotation here, but not above?
 
                         # simulate_and_calculate_Bayes_factor_terminal(
                         # args_string, cluster=cluster)
@@ -1111,19 +1115,17 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
         CIs[:, :, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=3)  # 0.025
         CIs[:, :, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2,
                                          axis=3)  # 0.975
-        CI_widths =CIs[:, :, :, 1] - CIs[:, :, :, 0]
+        CI_widths = CIs[:, :, :, 1] - CIs[:, :, :, 0]
         min_CI_width = np.floor(np.nanmin(CI_widths))
         max_CI_width = np.ceil(np.nanmax(CI_widths))
-
-
 
     # %% Actual plotting
     for ind_M, M in enumerate(Ms):
         fig = set_figure_size(num=3 + 3 * ind_M, rows=rows, page_width_frac=page_width_frac,
                               height_factor=height_factor)
 
-        real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=3),axis=(1,2))
-        max_real_trials = np.max(np.sum(~np.isnan(lg_BF_vals), axis=3), axis = (1,2))
+        real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=3), axis=(1, 2))
+        max_real_trials = np.max(np.sum(~np.isnan(lg_BF_vals), axis=3), axis=(1, 2))
 
         X, Y = np.meshgrid(etas, l0s)
         # xs = n12s
@@ -1139,7 +1141,6 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
         # Mean
         clims = np.array([-1, 1]) * np.ceil(np.abs(np.nanmax(median_lg_BFs)))
         levels = np.arange(clims[0], clims[1] + 1, 1)
-
 
         # ind_M = 0
         color = color_sequence[ind_M]
@@ -1199,13 +1200,12 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
         # clims = np.array([-1, 1]) * 6
         # levels = np.arange(clims[0], clims[1] + 1, 1)
 
-
         # ind_M = 0
         color = color_sequence[ind_M]
         zorder = len(Ms) - ind_M
-        levels = np.arange(min_CI_width,max_CI_width+1,1)
+        levels = np.arange(min_CI_width, max_CI_width + 1, 1)
         # plt.plot(xs, median_lg_BFs[ind_M, :], color=color, label=f'M={Ms[ind_M]:d}', zorder=zorder)
-        im = plt.contourf(X, Y, CI_widths[ind_M, : , :].T, zorder=zorder, cmap='Reds', levels =
+        im = plt.contourf(X, Y, CI_widths[ind_M, :, :].T, zorder=zorder, cmap='Reds', levels=
         levels)
 
         # im.clim(-3,3)
@@ -1250,7 +1250,7 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
         plt.show()
 
         ## Plot the simulation time
-        fig = set_figure_size(num=3+2 + 3 * ind_M, rows=rows, page_width_frac=page_width_frac,
+        fig = set_figure_size(num=3 + 2 + 3 * ind_M, rows=rows, page_width_frac=page_width_frac,
                               height_factor=height_factor)
         # Mean
         # clims = np.array([-1, 1]) * 6

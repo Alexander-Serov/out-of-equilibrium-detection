@@ -87,7 +87,13 @@ class Trajectory:
             elif model == 'free_different_D':
                 1
             elif model == 'localized_same_D_detect_angle':
-                1
+                self._ln_likelihood_with_link = get_ln_likelihood_func_2_particles_x_link(
+                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks, rotation=True, same_D=True)
+                self._ln_likelihood_no_link = get_ln_likelihood_func_no_link(
+                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks)
+                self._names_with_link = ('D1', 'n1', 'n2', 'n12', 'alpha')
+                self._names_no_link = ('D1', 'n1')
+
             elif model == 'localized_different_D_detect_angle':
                 self._ln_likelihood_with_link = get_ln_likelihood_func_2_particles_x_link(
                     ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks, rotation=True)
@@ -198,14 +204,13 @@ class Trajectory:
     @property
     def ln_model_evidence_no_link(self):
         if self._ln_model_evidence_no_link is None:
-            if self.model in self._dict_data and '_ln_model_evidence_no_link' in \
-                    self._dict_data[self.model]:
-                self._ln_model_evidence_no_link = self._dict_data[self.model][
-                    '_ln_model_evidence_no_link']
-                return self._ln_model_evidence_no_link
-
-            elif '_ln_model_evidence_no_link' in self._dict_data:
-                # This clause is kept for compatibility. Remove later
+            # if self.model in self._dict_data and '_ln_model_evidence_no_link' in \
+            #         self._dict_data[self.model]:
+            #     self._ln_model_evidence_no_link = self._dict_data[self.model][
+            #         '_ln_model_evidence_no_link']
+            #     return self._ln_model_evidence_no_link
+            if '_ln_model_evidence_no_link' in self._dict_data:
+                # The no link result does not depend on the model
                 self._ln_model_evidence_no_link = self._dict_data['_ln_model_evidence_no_link']
                 return self._ln_model_evidence_no_link
 
@@ -220,10 +225,10 @@ class Trajectory:
                 model_results = {'_MLE_no_link': self._MLE_no_link,
                                  '_ln_model_evidence_no_link':
                                      self._ln_model_evidence_no_link}
-                if self.model in self._dict_data:
-                    self._dict_data[self.model].update(model_results)
-                else:
-                    self._dict_data[self.model] = model_results
+                # if self.model in self._dict_data:
+                self._dict_data.update(model_results)
+                # else:
+                #     self._dict_data[self.model] = model_results
 
                 self._save_data()
         return self._ln_model_evidence_no_link
@@ -232,13 +237,13 @@ class Trajectory:
     def MLE_no_link(self):
         if self._MLE_no_link is None:
             # check loaded
-            if self.model in self._dict_data and '_MLE_no_link' in \
-                    self._dict_data[self.model]:
-                self._MLE_no_link = self._dict_data[self.model]['_MLE_no_link']
-                return self._MLE_no_link
+            # if self.model in self._dict_data and '_MLE_no_link' in \
+            #         self._dict_data[self.model]:
+            #     self._MLE_no_link = self._dict_data[self.model]['_MLE_no_link']
+            #     return self._MLE_no_link
 
-            elif '_MLE_no_link' in self._dict_data:
-                # This clause is kept for compatibility. Remove later
+            if '_MLE_no_link' in self._dict_data:
+                # The no link result does not depend on the model
                 self._MLE_no_link = self._dict_data['_MLE_no_link']
                 return self._MLE_no_link
 
@@ -289,7 +294,7 @@ class Trajectory:
         self._dict_data, _ = load_data(self._hash)
         # If not loaded, try with the old hash
         if 't' not in self._dict_data:
-            self._dict_data, _ = load_data(self.calculate_hash(old_hash=True))
+            self._dict_data, _ = load_data(self.calculate_hash(old_hash=True)[0])
 
     def _save_data(self):
         # self._dict_data, _ = load_data(self._hash)
@@ -361,16 +366,17 @@ if __name__ == '__main__':
     # test_traj = Trajectory(n1=0, n2=0, M=100)
     test_traj = Trajectory.from_parameter_dictionary({'D1': 0.4,
                                                       'D2': 0.4,
-                                                      'n1': 0,
-                                                      'n2': 0,
+                                                      'n1': 1,
+                                                      'n2': 1,
                                                       'n12': 2e-4 / 0.05,
                                                       'L0': 100 * np.sqrt(4 * 0.4 * 0.05),
-                                                      'M': 1000,
-                                                      'model': 'free_same_D',
-                                                      'recalculate': 1,
+                                                      'M': 500,
+                                                      'model': 'localized_same_D_detect_angle',
+                                                      # 'model': 'localized_different_D_detect_angle',
+                                                      'recalculate': 0,
                                                       'plot': 1,
                                                       'dry_run': 0,
-                                                      'trial': 0})
+                                                      'trial': 1})
     # print(test_traj.dRks)
     # print(test_traj.ks)
     # print('link = True: ', test_traj.ln_posterior(link=True, D1=1, n12=10, L0=1))
@@ -378,7 +384,7 @@ if __name__ == '__main__':
 
     # print('\nEvidence without link: ', test_traj.ln_model_evidence_no_link, 'MLE: ',
     #       test_traj.MLE_no_link)
-    # print('\nEvidence with link: ', test_traj.ln_model_evidence_with_link, 'MLE: ',
-    #       test_traj.MLE_link)
-    # print('\nLg Bayes factor for link: ', test_traj.lgB)
+    print('\nEvidence with link: ', test_traj.ln_model_evidence_with_link, 'MLE: ',
+          test_traj.MLE_link)
+    print('\nLg Bayes factor for link: ', test_traj.lgB)
     print('\nSimulation time: ', test_traj.simulation_time)

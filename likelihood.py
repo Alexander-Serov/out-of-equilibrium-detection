@@ -647,18 +647,26 @@ def new_likelihood_2_particles_x_link_one_point(dRk, k=1, D1=1, D2=3, n1=1, n2=1
     return ln_prob
 
 
-def get_ln_likelihood_func_2_particles_x_link(ks, M, dt, dRks=None, rotation=True):
+def get_ln_likelihood_func_2_particles_x_link(ks, M, dt, dRks=None, rotation=True, same_D = False):
     """
     Returns ln of the likelihood function for all input data points as a function of
     specified parameters. The likelihood is not normalized over these parameters.
     """
 
-    def ln_lklh(D1, D2, n1, n2, n12, alpha):
-        ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
-            dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
-            dt=dt, alpha=alpha, rotation=rotation) for i in range(len(ks))]
-        ln_lklh_val = np.sum(ln_lklh_vals)
-        return ln_lklh_val
+    if not same_D:
+        def ln_lklh(D1, D2, n1, n2, n12, alpha):
+            ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
+                dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
+                dt=dt, alpha=alpha, rotation=rotation) for i in range(len(ks))]
+            ln_lklh_val = np.sum(ln_lklh_vals)
+            return ln_lklh_val
+    else:
+        def ln_lklh(D1, n1, n2, n12, alpha):
+            ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
+                dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D1, n1=n1, n2=n2, n12=n12, M=M,
+                dt=dt, alpha=alpha, rotation=rotation) for i in range(len(ks))]
+            ln_lklh_val = np.sum(ln_lklh_vals)
+            return ln_lklh_val
     return ln_lklh
 
 

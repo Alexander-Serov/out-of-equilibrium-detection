@@ -190,7 +190,7 @@ def average_over_modes(input, dk):
 def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, dt, angle, L0, trial, M, model,
                                         seed=None, recalculate_trajectory=False,
                                         recalculate_BF=False, verbose=False, true_args=None,
-                                        cluster=False, rotation=True):
+                                        cluster=False, rotation=True, **kwargs):
     """
     The function combines trajectory simulation and bayes factor calculation to be able to delegate
     the task to a computation cluster.

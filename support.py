@@ -57,12 +57,12 @@ def locally_rotate_a_vector(dR, lag):
         rotated[:, j] = RM @ dR[:, j + lag]
     return rotated
 
-def get_cluster_args_string(D1, D2, n1, n2, n12, dt, L, M, model, trial=0,
+def get_cluster_args_string(D1, D2, n1, n2, n12, dt, L0, M, model, trial=0,
                             recalculate_trajectory=False, recalculate_BF=False, verbose=False,
-                            rotation=True, angle=None, gamma = None):
+                            rotation=True, angle=None, gamma = None, **kwargs):
     args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g}  --dt={dt:g} ' \
-                  '--L={L:g} --trial={trial:d} --M={M} --model={model}'.format(
-        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12,  dt=dt,  L=L, trial=trial,
+                  '--L={L0:g} --trial={trial:d} --M={M} --model={model}'.format(
+        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12,  dt=dt,  L0=L0, trial=trial,
         M=M, model = model)
     if recalculate_trajectory:
         args_string += ' --recalculate_trajectory'

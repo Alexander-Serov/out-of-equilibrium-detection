@@ -14,7 +14,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from filelock import FileLock
+from filelock import FileLock, Timeout
 from scipy.optimize import root, root_scalar
 from scipy.special import gamma
 from pickle import UnpicklingError
@@ -125,20 +125,19 @@ def load_data(hash):
     """Load a data dictionary from a pickle file"""
     filename = 'data_' + hash + '.pyc'
     filepath = os.path.join(data_folder, filename)
-    dict_data = {}
-    loaded = False
-    if os.path.exists(filepath):
+    dict_data, loaded = {}, False
+
+    try:
         with open(filepath, 'rb') as file:
-            try:
-                dict_data = pickle.load(file)
-                if isinstance(dict_data, dict):
-                    loaded = True
-                    # print(f'File {filename} loaded successfully')
-            except UnpicklingError() as e:
-                print('Unpickling failed with exception', e)
-    # else:
-    # print(f'Cannot load because file "{filename}" not found')
-    # 1
+            dict_data = pickle.load(file)
+        if isinstance(dict_data, dict):
+            loaded = True
+    except EOFError as e:
+        print('Encountered incomplete file\n', e)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print('Unhandled exception while reading a data file', e)
 
     return dict_data, loaded
 
@@ -146,29 +145,29 @@ def load_data(hash):
 def delete_data(hash):
     """Delete a pickle file"""
     filename = os.path.join(data_folder, 'data_' + hash + '.pyc')
-    if os.path.exists(filename):
+    try:
         os.unlink(filename)
         print(f'Deleted hash {hash}')
+    except:
+        pass
     return
 
 
 def save_data(dict_data, hash):
     """Write dict_data to a pickle file"""
-    # Check if folder exists
+
     if not os.path.exists(data_folder):
         os.makedirs(data_folder)
 
-    # Save to file
     filename = os.path.join(data_folder, 'data_' + hash + '.pyc')
-    success = False
     try:
         with open(filename, 'wb') as file:
             pickle.dump(dict_data, file, pickle.HIGHEST_PROTOCOL)
-        success = True
-    except:
-        pass
+        return True
+    except Exception as e:
+        logging.warning("Enoucntered unhandled exception while saving a data file: ", e)
+        return False
 
-    return success
 
 
 class stopwatch:
@@ -230,43 +229,86 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
 
     if hash_no_trial is None:
         return False
-
     hash_no_trial += f'{link:b}'
 
-    # Load current guesses
-    MLE_guesses, success_load = load_all_MLE_guesses()
-    if success_load is 'file_not_found':
-        MLE_guesses = {}
-    elif success_load == False:
-        logging.warn('Unable to load MLE guesses for an unknown reason. Aborting save operation')
-        return False
+    try:
+        with lock:
+            # Load guesses
+            with open(filename, 'rb') as file:
+                MLE_guesses = pickle.load(file)
+                if not isinstance(MLE_guesses, dict):
+                    MLE_guesses={}
 
-    if hash_no_trial in MLE_guesses.keys():
-        old_ln_value = MLE_guesses[hash_no_trial][1]
-    else:
-        old_ln_value = -np.inf
+            # Update value if lower
+            if hash_no_trial in MLE_guesses.keys():
+                old_ln_value = MLE_guesses[hash_no_trial][1]
+            else:
+                old_ln_value = -np.inf
 
-    if old_ln_value < ln_posterior_value or force_update:
-        MLE_guesses[hash_no_trial] = (MLE_guess, ln_posterior_value)
+            if old_ln_value < ln_posterior_value or force_update:
+                MLE_guesses[hash_no_trial] = (MLE_guess, ln_posterior_value)
 
-        # Save to file
-        try:
-            with lock:
-                with open(filename, 'wb') as file:
-                    pickle.dump(MLE_guesses, file, pickle.HIGHEST_PROTOCOL)
-        except:
-            logging.warn('Unable to save MLE guess')
-            success = False
-            pass
-    else:
-        success = False
+            # Save to file
+            with open(filename, 'wb') as file:
+                pickle.dump(MLE_guesses, file, pickle.HIGHEST_PROTOCOL)
 
-    if success:
-        print('Saved MLE guess updated: ', MLE_guess)
-        print(
-            f'Log max value of the MLE guess increased from {old_ln_value:.3g} to {ln_posterior_value:.3g}')
+        print('Saved MLE guess updated successfully.')
+        return True
 
-    return success
+    except Timeout:
+        logging.warning("MLE guess file is locked by another instance. Skipping MLE guess save")
+
+    except Exception as e:
+        logging.warning('MLE guess save failed for unknown reason: ', e)
+
+    return False
+
+    # if os.path.exists(filename):
+    #     try:
+    #         with lock:
+    #             with open(filename, 'rb') as file:
+    #                 MLE_guesses = pickle.load(file)
+    #                 if isinstance(MLE_guesses, dict):
+    #                     success = True
+    #     except:
+    #         logging.warning('The MLE guess file exists, but unable to load the MLE guesses')
+    #         pass
+    # else:
+    #     success = 'file_not_found'
+
+
+    # if success_load is 'file_not_found':
+    #     MLE_guesses = {}
+    # elif success_load == False:
+    #     logging.warning('Loading from the MLE guess file failed. Aborting save operation')
+    #     return False
+    #
+    # if hash_no_trial in MLE_guesses.keys():
+    #     old_ln_value = MLE_guesses[hash_no_trial][1]
+    # else:
+    #     old_ln_value = -np.inf
+    #
+    # if old_ln_value < ln_posterior_value or force_update:
+    #     MLE_guesses[hash_no_trial] = (MLE_guess, ln_posterior_value)
+    #
+    #     # Save to file
+    #     try:
+    #         with lock:
+    #             with open(filename, 'wb') as file:
+    #                 pickle.dump(MLE_guesses, file, pickle.HIGHEST_PROTOCOL)
+    #     except:
+    #         logging.warning('Unable to save MLE guess')
+    #         success = False
+    #         pass
+    # else:
+    #     success = False
+    #
+    # if success:
+    #     print('Saved MLE guess updated: ', MLE_guess)
+    #     print(
+    #         f'Log max value of the MLE guess increased from {old_ln_value:.3g} to {ln_posterior_value:.3g}')
+    #
+    # return success
 
 
 def load_all_MLE_guesses():
@@ -279,18 +321,18 @@ def load_all_MLE_guesses():
     lock_file = filename + '.lock'
     lock = FileLock(lock_file, timeout=LOCK_TIMEOUT)
 
-    if os.path.exists(filename):
-        try:
-            with lock:
-                with open(filename, 'rb') as file:
-                    MLE_guesses = pickle.load(file)
-                    if isinstance(MLE_guesses, dict):
-                        success = True
-        except:
-            logging.warn('The MLE guess file exists, but unable to load the MLE guesses')
-            pass
-    else:
-        success = 'file_not_found'
+    try:
+        with lock:
+            with open(filename, 'rb') as file:
+                MLE_guesses = pickle.load(file)
+        if isinstance(MLE_guesses, dict):
+            success = True
+    except Timeout:
+        logging.warning("MLE guess file is in use by another application. Skipping MLE guess load.")
+    except IOError as e:
+        logging.warning("MLE guess file does not exist: ", e)
+    except Exception as e:
+        logging.warning('Unhandled exception while loading MLE guesses: ', e)
 
     return MLE_guesses, success
 

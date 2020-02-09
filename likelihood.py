@@ -28,6 +28,17 @@ from constants_main import color_sequence
 from support import (delete_data, hash_from_dictionary, load_data,
                      load_MLE_guess, save_data, save_MLE_guess,
                      save_number_of_close_values, stopwatch)
+# import pymc3 as pm
+# from pymc3.math import matrix_inverse, dot
+# import theano
+# from theano import tensor
+# import theano.tensor as tt
+import timeit
+from stopwatch import stopwatch
+import sys
+import os
+import pickle, dill
+import warnings
 
 ln_neg_infty = - 1000 * log(10)
 plot = False
@@ -433,9 +444,10 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
 
 
 def new_likelihood_2_particles_x_link_one_point(dRk, k=1, D1=1, D2=3, n1=1, n2=1, n12=1, M=999,
-                                                dt=0.3, alpha=0, rotation=True, both=False):
+                                                dt=0.3, alpha=0, rotation=True, both=False,
+                                                link=True):
     """
-    # UPDAT
+    # UPDATE
     Calculate likelihood of one power spectrum observation z for the frequency k.
     Does not work for k = 0.
 
@@ -465,20 +477,22 @@ def new_likelihood_2_particles_x_link_one_point(dRk, k=1, D1=1, D2=3, n1=1, n2=1
     # %% Hard-code the eigenvalues and the diagnolizing matrix U
     # Treat separately the case of n12=0 and n12>0
     ck = exp(-2 * pi * 1j * k / M)
-    if n12 > ATOL:
+    if link:
         g = np.sqrt((n1 - n2) ** 2 + 4 * n12 ** 2)
         lambdas = np.array([-2 * n1, -2 * n2, -g - n1 - 2 * n12 - n2, g - n1 - 2 * n12 - n2]) / 2
-        U = np.array([
+        U = 1 / g * np.array([
             [0, 0, -2 * n12, 2 * n12],
             [2 * g, 0, 0, 0],
             [0, 0, g - n1 + n2, g + n1 - n2],
-            [0, 2 * g, 0, 0]]) / 2 / g
+            [0, 2 * g, 0, 0]]) / 2
 
-        Um1 = np.array([
+        # raise RuntimeError('Stop')
+
+        Um1 = 1 / n12 * np.array([
             [0, 2 * n12, 0, 0],
             [0, 0, 0, 2 * n12],
             [-g - n1 + n2, 0, 2 * n12, 0],
-            [g - n1 + n2, 0, 2 * n12, 0]]) / 2 / n12
+            [g - n1 + n2, 0, 2 * n12, 0]]) / 2
 
         # lambdas_test, U_test = np.linalg.eig(A)
 
@@ -625,14 +639,16 @@ False, both=False):
         def ln_lklh(D1, D2, n1, n2, n12, alpha):
             ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
                 dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
-                dt=dt, alpha=alpha, rotation=rotation, both=both) for i in range(len(ks))]
+                dt=dt, alpha=alpha, rotation=rotation, both=both, link=True) for i in range(len(
+                ks))]
             ln_lklh_val = np.sum(ln_lklh_vals)
             return ln_lklh_val
     else:
         def ln_lklh(D1, n1, n2, n12, alpha):
             ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
                 dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D1, n1=n1, n2=n2, n12=n12, M=M,
-                dt=dt, alpha=alpha, rotation=rotation, both=both) for i in range(len(ks))]
+                dt=dt, alpha=alpha, rotation=rotation, both=both, link=True) for i in
+                range(len(ks))]
             ln_lklh_val = np.sum(ln_lklh_vals)
             return ln_lklh_val
     return ln_lklh
@@ -1276,8 +1292,8 @@ def get_ln_prior_func(rotation=True):
     return ln_prior, sample_from_the_prior
 
 
-def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, method='BFGS', verbose= \
-        False):
+def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, verbose= \
+        False, log_lklh=None, **kwargs):
     """
     Locate the MLE of the posterior. Estimate the evidence integral through Laplace approximation. Since the parameters have different scales, the search is conducted in the log space of the parameters.
 
@@ -1292,7 +1308,14 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
     # number of random starting points for the MLE search before abandoning
     # Based on 99% chance estimate in a simple binomial model.
 
+    d = len(names)
     tol = 1e-5  # search tolerance
+    options_BFGS = {'disp': verbose, 'gtol': tol}
+    fatol = 1e-2
+    xatol = 1e-6
+    options_NM = {'disp': verbose, 'maxiter': d * 1000,
+                  'xatol': xatol, 'fatol': fatol, 'disp': False}
+
     bl_log_parameter_search = False
     np.random.seed()
 
@@ -1301,8 +1324,6 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
 
     def to_dict(*args):
         return {a: args[i] for i, a in enumerate(names)}
-
-    d = len(names)
 
     def minimize_me(args):
         """-ln posterior to minimize"""
@@ -1314,60 +1335,20 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
     if verbose:
         print('Started MLE search')
 
-    options_BFGS = {'disp': verbose, 'gtol': tol}
-    fatol = 1e-2
-    xatol = 1e-6
-    options_NM = {'disp': verbose, 'maxiter': d * 1000,
-                  'xatol': xatol, 'fatol': fatol, 'disp': False}
+    if 'method' in kwargs:
+        warnings.warn(DeprecationWarning('Method parameter is deprecated'))
 
-    # method = 'Nelder-Mead'
-    if method == 'BFGS':
-        options = options_BFGS
-    elif method == 'Nelder-Mead':
-        options = options_NM
-    else:
-        raise RuntimeError(f'Method "{method}" not implemented')
+    # # method = 'Nelder-Mead'
+    # if method == 'BFGS':
+    #     options = options_BFGS
+    # elif method == 'Nelder-Mead':
+    #     options = options_NM
+    # else:
+    #     raise RuntimeError(f'Method "{method}" not implemented')
 
-    def retry(i, min, ln_ev):
-        print('Found minimum: ', min.fun, 'with ln evidence', ln_ev, ' at ', to_dict(*min.x))
+    def retry(i, _min_x, ln_evidence, fun):
+        print('Found minimum: ', fun, 'with ln evidence', ln_evidence, ' at ', to_dict(*_min_x))
         return
-
-    def calculate_laplace_approximation(min):
-        """
-        The function locally calculates the integral of a given minimum by using a Laplace approximation (approximating the shape of the peak by a non-uniform Gaussian).
-        If the Hessian was calculated by the BFGS method, its values is used, otherwise, it is evaluated through finite differences.
-        """
-        if 'hess_inv' in min and np.abs(np.linalg.det(min.hess_inv) - 1) >= 1e-8:
-            # Require that the returned Hessian has really been evaluated
-            hess_inv = min.hess_inv
-            det_inv_hess = np.linalg.det(hess_inv)
-            print('BFGS det. hess_inv: ', det_inv_hess)
-            print('Eigenvalues of the BFGS hessian: ', np.linalg.eigvals(hess_inv))
-        # else:
-        # # Otherwise, manually estimate the Hessian
-        # print('Manually calculating the Hessian')
-        # hess = nd.Hessian(minimize_me)(min.x)
-        # det_inv_hess = 1 / np.linalg.det(hess)
-        #
-        # print('Eigenvalues of the manual hessian: ', np.linalg.eigvals(np.linalg.inv(hess)))
-        # # hess_inv = np.nan
-        # print('Manual det. hess_inv: ', det_inv_hess)
-
-        if det_inv_hess <= 0:
-            # If the Hessian is non-positive, it was not a minimum
-            return np.nan
-
-        # Calcualte evidence
-        # Remember `minimize_me` is the negative log likelihood
-        ln_model_evidence = ((d / 2) * log(2 * pi)
-                             + 1 / 2 * log(det_inv_hess)
-                             - minimize_me(min.x))
-        print(
-            'Laplace approximation of the normalized integral ',
-            exp((d / 2) * log(2 * pi)
-                + 1 / 2 * log(det_inv_hess)))
-        # print(' Hess_inv', det_inv_hess, hess_inv)
-        return ln_model_evidence
 
     # def calculate_evidence_integral(points=None):
     #     """
@@ -1419,6 +1400,61 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
     #
     #     return log(res[0]) + largest_ln_value
 
+    # def calculate_laplace_approximation(_min_x):
+    #     """
+    #     The function locally calculates the integral of a given minimum by using a Laplace approximation (approximating the shape of the peak by a non-uniform Gaussian).
+    #     If the Hessian was calculated by the BFGS method, its values is used, otherwise, it is evaluated through finite differences.
+    #     """
+    #     if 'hess_inv' in _min_x and np.abs(np.linalg.det(_min_x.hess_inv) - 1) >= 1e-8:
+    #         # Require that the returned Hessian has really been evaluated
+    #         hess_inv = BFGS_hess_inv = _min_x.hess_inv
+    #         det_inv_hess = BFGS_det_inv_hess = np.linalg.det(hess_inv)
+    #
+    #     # else:
+    #     # # Otherwise, manually estimate the Hessian
+    #     print('Manually calculating the Hessian')
+    #     hess, info = nd.Hessian(minimize_me, full_output=True)(_min_x.x)
+    #     man_hess = hess
+    #     print('Info: ', info)
+    #
+    #     det_inv_hess = man_det_inv_hess = 1 / np.linalg.det(hess)
+    #
+    #     # hess_inv = np.nan
+    #
+    #     try:
+    #         print('BFGS det. hess_inv: ', BFGS_det_inv_hess)
+    #     except:
+    #         pass
+    #     print('Manual det. hess_inv: ', man_det_inv_hess, 1 / man_det_inv_hess,
+    #           np.linalg.det(np.linalg.inv(man_hess)))
+    #     try:
+    #         print('\nBFGS inv. hess: ', BFGS_hess_inv)
+    #     except:
+    #         pass
+    #     print('\n Manual inv. hess: ', np.linalg.inv(man_hess))
+    #     try:
+    #         print('Eigenvalues of the BFGS hessian: ', np.linalg.eigvals(BFGS_hess_inv))
+    #     except:
+    #         pass
+    #     print('Eigenvalues of the manual hessian: ', np.linalg.eigvals(np.linalg.inv(man_hess)))
+    #     print('And eigenvectors: ', np.linalg.eig(np.linalg.inv(man_hess)))
+    #
+    #     if det_inv_hess <= 0:
+    #         # If the Hessian is non-positive, it was not a minimum
+    #         return np.nan
+    #
+    #     # Calcualte evidence
+    #     # Remember `minimize_me` is the negative log likelihood
+    #     ln_model_evidence = ((d / 2) * log(2 * pi)
+    #                          + 1 / 2 * log(det_inv_hess)
+    #                          - minimize_me(_min_x.x))
+    #     print(
+    #         'Laplace approximation of the normalized integral ',
+    #         exp((d / 2) * log(2 * pi)
+    #             + 1 / 2 * log(det_inv_hess)))
+    #     # print(' Hess_inv', det_inv_hess, hess_inv)
+    #     return ln_model_evidence
+
     mins = []
     for i in range(max_tries):
         print(f'\nMLE search. Try {i + 1}/{max_tries}...')
@@ -1442,10 +1478,19 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
                 f'Sampling an origin point from the prior:\n', start_point)
 
         start_point_vals = to_list(start_point)
-        fnc = minimize_me
 
-        min = minimize(fnc, start_point_vals, tol=1e-5, method=method,
-                       options=options)
+        # _min_x = minimize(fnc, start_point_vals, tol=1e-5, method=method,
+        #                options=options)
+        _min_x, fun, det_inv_hess, ln_evidence, success = get_MAP_and_hessian(minimize_me,
+                                                                              start_point_vals)
+
+        # # Save function for analysis
+        # filename = os.path.join('function.pyc')
+        # try:
+        #     with open(filename, 'wb') as file:
+        #         dill.dump(minimize_me, file, pickle.HIGHEST_PROTOCOL)
+        # except Exception as e:
+        #     logging.warning("Enoucntered unhandled exception while saving a data file: ", e)
 
         # Check if alpha angle is within [-pi/2; pi/2]
         if 'alpha' in names:
@@ -1454,81 +1499,96 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
                 return alpha - np.sign(alpha) * n * np.pi, n != 0
 
             alpha_ind = names.index('alpha')
-            alpha_old = min.x[alpha_ind]
-            alpha, shifted = shift_angle(min.x[alpha_ind])
+            alpha_old = _min_x[alpha_ind]
+            alpha, shifted = shift_angle(_min_x[alpha_ind])
             if shifted:
                 print(
-                    f'Interaction angle shifted to [-pi/2, pi/2] interval from {alpha_old} to {alpha}, and then recalculated.')
-                min.x[alpha_ind] = alpha
-                min = minimize(fnc, min.x, tol=1e-5, method=method,
-                               options=options)
+                    f'Interaction angle shifted to [-pi/2, pi/2] interval from {alpha_old} to '
+                    f'{alpha}, and then recalculated.')
+                _min_x[alpha_ind] = alpha
+                # _min_x = minimize(fnc, _min_x.x, tol=1e-5, method=method,
+                #                options=options)
+                _min_x, fun, det_inv_hess, ln_evidence, success = get_MAP_and_hessian(minimize_me,
+                                                                                      _min_x)
 
-        print('Full optimization result:\n', min)
+        print('Result. Function value:\t', fun, '\tLocation:\t', to_dict(*_min_x))
 
-        grad = nd.Gradient(minimize_me)(min.x)
+        # print(np.array(_min_x.x).squeeze())
+        grad = nd.Gradient(minimize_me)(_min_x)
         grad_norm = np.max(abs(grad))
         print('\nGradient in the minimum:\t', grad, '\tMax. norm:\t', grad_norm)
+        print('\nManual Jacobian:\t', nd.Jacobian(minimize_me)(_min_x))
+        # print('Calculated Jacobian:\t', _min_x.jac, '\n')
+        # print('A', out)
 
         # Store the found point if the hessian is not diagonal (because it's not a new point then)
-        # if np.abs(np.linalg.det(min.hess_inv)) >= 1e-8:
+        # if np.abs(np.linalg.det(_min_x.hess_inv)) >= 1e-8:
         GRAD_NORM_TOL = 1
         if grad_norm < GRAD_NORM_TOL:
-            ln_evidence = calculate_laplace_approximation(min)
+            pass
+            # ln_evidence = calculate_laplace_approximation(_min_x)
+
         else:
             print(f'Warning! Gradient too large (norm = {grad_norm}). Check your prior! \nThe '
                   f'current result will be ignored')
             ln_evidence = np.nan
 
-        # if not min.success:
-        #     print('The minimization algorithm did not converge. Exploring the options')
+        # # if not _min_x.success:
+        # print('Relaunching from the minimum')
         #
-        #     min1 = minimize(fnc, min.x, tol=1e-5, method=method, options=options)
-        #     print('\nBFGS Restart from found point:\n', min1)
-        #     calculate_laplace_approximation(min1)
+        # min1 = minimize(fnc, _min_x.x, tol=1e-5, method=method, options=options_BFGS)
+        # print('\nBFGS Restart from found point:\n', min1)
+        # calculate_laplace_approximation(min1)
         #
-        #     minNM = minimize(fnc, min.x, tol=1e-5, method='Nelder-Mead', options=options)
-        #     print('Neldear-Mead from the found point:\n', minNM)
-        #     calculate_laplace_approximation(minNM)
+        # minNM = minimize(fnc, _min_x.x, tol=1e-5, method='Nelder-Mead', options=options_NM)
+        # print('Neldear-Mead from the found point:\n', minNM)
+        # calculate_laplace_approximation(minNM)
+        # #
+        # # sys.exit(0)
 
-        element = (min.fun, ln_evidence, min)
+        element = (fun, ln_evidence, _min_x, success)
         mins.append(element)
 
         # Plot to check the minimum
         if plot:
             print('Plotting...')
-            plt.figure(6 + int(link), clear=True)
 
             def plot_func(xs, dim):
                 out = []
                 for x in xs:
-                    args = min.x.copy()
+                    args = _min_x.copy()
                     args[dim] = x
                     out.append(minimize_me(args))
                 return out
 
             # step = 0.1
             for dim in range(len(names)):
-                x_d = min.x[dim]
-                xs = np.linspace(np.min([x_d * 0.1, 0.1]),
-                                 np.max([x_d * 20, 1]), num=100, endpoint=True)
+                x_d = _min_x[dim]
+                if names[dim] is not 'alpha':
+                    xs = np.linspace(np.min([x_d * 0.5, 0.1]),
+                                     np.max([x_d * 2, 1]), num=100, endpoint=True)
+                else:
+                    xs = np.linspace(-np.pi,
+                                     np.pi, num=100, endpoint=True)
+                plt.figure(6 + int(link), clear=True)
                 plt.plot(xs, plot_func(xs, dim), label=names[dim])  # , color=color_sequence[dim])
                 plt.scatter(x_d, plot_func([x_d], dim)[0])  # , color=color_sequence[dim])
 
-            plt.legend()
-            plt.show(block=False)
-            import time
-            time.sleep(3)
-            print('Plotting... done!')
+                plt.legend()
+                plt.show(block=False)
+                # import time
+                # time.sleep(3)
+                # print('Plotting... done!')
 
-            # if link:
-            #     # print(M, link)
-            #     # if link and M == 100:
-            #     #     raise RuntimeError('stop')
-            #     raise RuntimeError('Stop after plot')
-            plt.xlim([0, 40])
-            figname = f'minimum_{i}.png'
-            plt.tight_layout()
-            plt.savefig(figname)
+                # if link:
+                #     # print(M, link)
+                #     # if link and M == 100:
+                #     #     raise RuntimeError('stop')
+                #     raise RuntimeError('Stop after plot')
+                # plt.xlim([0, 40])
+                figname = f'minimum_{i}_{dim}.png'
+                plt.tight_layout()
+                plt.savefig(figname)
         # else:
         #     ln_model_evidence = ln_true_evidence
 
@@ -1544,7 +1604,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
         if times_best_found >= SAME_MINIMA_STOP_CRITERION:
             break
 
-        retry(i, min, ln_evidence)
+        retry(i, _min_x, ln_evidence, fun)
 
     # Sort the results
     mins.sort(key=itemgetter(0))
@@ -1570,9 +1630,9 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
 
     # if np.isnan(ln_true_evidence):
     # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
-    success = False
-    for _, ln_laplace_evidence, min in mins:
-        if min.success or (not min.success and min.status == 2):
+    # success = False
+    for fun, ln_laplace_evidence, _min_x, success in mins:
+        if success:
 
             if not np.isnan(ln_laplace_evidence):
                 # If this was not a minimum, the returned value will be nan.
@@ -1588,22 +1648,22 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
     ln_model_evidence = np.nanmax([ln_laplace_evidence, ln_true_evidence])
     success = not np.isnan(ln_model_evidence)
     # if success:
-    #     print('Rerunning BFGS on the best min:\n',
-    #           minimize(fnc, min.x, tol=1e-5, method='BFGS',
+    #     print('Rerunning BFGS on the best _min_x:\n',
+    #           minimize(fnc, _min_x.x, tol=1e-5, method='BFGS',
     #                    options=options_BFGS))
 
     # Restore the parameters from log
     if bl_log_parameter_search:
-        MLE = {names[i]: exp(min.x[i]) for i in range(len(min.x))}
+        MLE = {names[i]: exp(_min_x[i]) for i in range(len(_min_x))}
     else:
-        MLE = {names[i]: min.x[i] for i in range(len(min.x))}
+        MLE = {names[i]: _min_x[i] for i in range(len(_min_x))}
 
     if success:
         print(
             f'MLE search with (link = {link}) converged.\nTaking the best point seen so far:\n',
-            (min.fun, MLE))
+            (fun, MLE))
         try:
-            lam, v = np.linalg.eig(np.linalg.inv(min.hess_inv))
+            lam, v = np.linalg.eig(np.linalg.inv(_min_x.hess_inv))
             # print(f'Eigenvalues and eigenvectors of the Hessian for the MLE:\n', )
             # print('Eigenvalues of the Hessian: ', lam)
             # print('Eigenvectors: ', v)
@@ -1611,14 +1671,306 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, met
             pass
         # Save the MLE guess for further use
         save_MLE_guess(hash_no_trial=hash_no_trial, MLE_guess=MLE,
-                       ln_posterior_value=-min.fun, link=link)
+                       ln_posterior_value=-fun, link=link)
     else:
         print(
             f'MLE search procedure with link={link} failed to converge in {tries} tries.')
 
+    # sys.exit(0)
     if verbose:
         1
-        # print('Full results:\n', min)
+        # print('Full results:\n', _min_x)
         # print('det_inv_hess: ', det_inv_hess)
 
-    return MLE, ln_model_evidence, min, success
+    return MLE, ln_model_evidence, _min_x, success
+
+
+# def pymc_MLE(ks,
+#              M,
+#              dt,
+#              dRks,
+#              rotation=True,
+#              same_D=False,
+#              both=False,
+#              ln_posterior=None,
+#              names=None,
+#              sample_from_the_prior=None,
+#              hash_no_trial=None,
+#              link=True,
+#              method='BFGS',
+#              verbose=False,
+#              log_lklh=None,
+#              ):
+#     # if not same_D:
+#     #     def ln_lklh(D1, D2, n1, n2, n12, alpha):
+#     #         ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
+#     #             dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
+#     #             dt=dt, alpha=alpha, rotation=rotation, both=both, link=True) for i in range(len(
+#     #             ks))]
+#     #         ln_lklh_val = np.sum(ln_lklh_vals)
+#     #         return ln_lklh_val
+#     # else:
+#     #     def ln_lklh(D1, n1, n2, n12, alpha):
+#     #         ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
+#     #             dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D1, n1=n1, n2=n2, n12=n12, M=M,
+#     #             dt=dt, alpha=alpha, rotation=rotation, both=both, link=True) for i in
+#     #             range(len(ks))]
+#     #         ln_lklh_val = np.sum(ln_lklh_vals)
+#     #         return ln_lklh_val
+#     # return ln_lklh
+#     # print(ks)
+#     # print(dRks)
+#
+#     # %%% Parameters of the prior
+#     ################# Diffusivities D1, D2 #################
+#
+#     def get_theta(tau, max_expected):
+#         # Condition: decrease on the right border as compared to mode is tau
+#         # Assuming gamma distribution
+#         sol = root_scalar(lambda z: z * exp(1 - z) - tau, bracket=[1, 1e5])
+#         z = sol.root
+#         theta = max_expected / z
+#         return theta
+#
+#     tau_D = 1e-2
+#     k_D = 2
+#     tau_n = 1e-2
+#     k_n = 2
+#     tau_n12 = 1e-2
+#     k_n12 = 2
+#     mu_alpha = 0
+#     sigma_alpha = np.pi / 4
+#
+#     ### Try a search based on PyMC
+#     def to_1D(x):
+#         return np.vstack([np.real(x), np.imag(x)])
+#
+#     if link:
+#         # print(log_lklh)
+#         with pm.Model() as model:
+#             # Priors
+#             D1 = pm.Gamma('D1', alpha=k_D, beta=1 / get_theta(tau_D, max_expected_D))
+#             D2 = pm.Gamma('D2', alpha=k_D, beta=1 / get_theta(tau_D, max_expected_D))
+#             n1 = pm.Gamma('n1', alpha=k_n, beta=1 / get_theta(tau_n, max_expected_n))
+#             n2 = pm.Gamma('n2', alpha=k_n, beta=1 / get_theta(tau_n, max_expected_n))
+#             n12 = pm.Gamma('n12', alpha=k_n12, beta=1 / get_theta(tau_n12, max_expected_n12))
+#             alpha = pm.Normal('alpha', mu=mu_alpha, sigma=sigma_alpha)
+#
+#             for ind in range(2):  # len(ks)):
+#
+#                 k = ks[ind]
+#                 dRk = dRks[:, ind, np.newaxis]
+#
+#                 # def log_lklh(n1, n2, n12, D1, D2, alpha):
+#                 # ck = exp(-2 * pi * 1j * k / M)
+#                 Re_ck = np.cos(-2 * pi * k / M)
+#                 Im_ck = np.sin(-2 * pi * k / M)
+#                 # if link:
+#
+#                 g = pm.math.sqrt((n1 - n2) ** 2 + 4 * n12 ** 2)
+#
+#                 # print(model)
+#                 # print(model.basic_RVs)
+#
+#                 lambdas = tt.stack([-2 * n1, -2 * n2,
+#                                     -g - n1 - 2 * n12 - n2, g - n1 - 2 * n12 - n2]) / 2
+#                 U = tt.stacklists([
+#                     [0, 0, -2 * n12, 2 * n12],
+#                     [2 * g, 0, 0, 0],
+#                     [0, 0, g - n1 + n2, g + n1 - n2],
+#                     [0, 2 * g, 0, 0]]) / 2 / g
+#
+#                 Um1 = tt.stacklists([
+#                     [0, 2 * n12, 0, 0],
+#                     [0, 0, 0, 2 * n12],
+#                     [-g - n1 + n2, 0, 2 * n12, 0],
+#                     [g - n1 + n2, 0, 2 * n12, 0]]) / 2 / n12
+#
+#                 def cj(j):
+#                     return tt.exp(lambdas[j - 1] * dt)
+#
+#                 def s_abs_2(i):
+#                     r = (cj(i) - Re_ck) ** 2 + Im_ck ** 2
+#                     return 1 / r
+#
+#                 def Re_Q(i, j):
+#                     """
+#                     Manually calculate the Real and Imaginary parts of Q because theano does not
+#                     work with complex numbers
+#                     """
+#                     r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] + lambdas[j - 1])
+#                     r *= s_abs_2(i) * s_abs_2(j)
+#                     r *= 1 + cj(i) * cj(j) - cj(i) * Re_ck - cj(j) * Re_ck
+#
+#                     return r
+#
+#                 def Im_Q(i, j):
+#                     """
+#                     Manually calculate the Real and Imaginary parts of Q because theano does not
+#                     work with complex numbers
+#                     """
+#                     r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] + lambdas[j - 1])
+#                     r *= s_abs_2(i) * s_abs_2(j)
+#                     r *= 1 + cj(i) * cj(j) + cj(i) * Im_ck - cj(j) * Im_ck
+#
+#                     return r
+#
+#                 # Gamma covariance matrix
+#                 def G1(real):
+#                     Q = Re_Q if real else Im_Q
+#
+#                     G1 = tt.stacklists([
+#                         [2 * D1 * Q(1, 1), 0, 0, 0],
+#                         [0, 2 * D2 * Q(2, 2), 0, 0],
+#                         [0, 0, (D1 * (g + n1 - n2) + D2 * (g - n1 + n2)) *
+#                          Q(3, 3) / g, -(D1 - D2) * (g + n1 - n2) * Q(3, 4) / g],
+#                         [0, 0, -(D1 - D2) * (g - n1 + n2) * Q(4, 3) / g,
+#                          (D1 * (g - n1 + n2) + D2 * (g + n1 - n2)) * Q(4, 4) / g]])
+#                     return G1
+#
+#                 def Gfull(real):
+#                     G = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * U.dot(G1(real)).dot(Um1)
+#                     if not both:
+#                         return G[:2, :2]
+#                     else:
+#                         return G
+#
+#                 def Cfull(real):
+#                     C = Gfull(real) * np.float(k != 0)
+#                     if not both:
+#                         return C[:2, :2]
+#                     else:
+#                         return C
+#
+#                 #
+#                 # # # else:
+#                 # # #     # g = np.sqrt((n1 - n2)**2 + 2 * n12**2)
+#                 # # #     lambdas = np.array([-n1, -n1, -n2, -n2])
+#                 # # #
+#                 # # #     def cj(j):
+#                 # # #         return exp(lambdas[j - 1] * dt)
+#                 # # #
+#                 # # #     def Q(i, j):
+#                 # # #         r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] +
+#                 # # #                                        lambdas[j - 1]) / (cj(j) - ck) / (cj(i) - 1 / ck)
+#                 # # #         return r if i != j else r.real
+#                 # # #
+#                 # # #     # %% Get Gamma covariance matrix
+#                 # # #     G1 = np.array([
+#                 # # #         [2 * D1 * Q(1, 1), 0, 0, 0],
+#                 # # #         [0, 2 * D1 * Q(2, 2), 0, 0],
+#                 # # #         [0, 0, 2 * D2 * Q(3, 3), 0],
+#                 # # #         [0, 0, 0, 2 * D2 * Q(4, 4)]])
+#                 # # #     Gfull = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * G1
+#                 # # #
+#                 # # # # if k == 1:
+#                 # # # #     print(f'Q11(k=1) = {Q(1,1)}')
+#                 # #
+#                 # Cfull = np.zeros((4, 4)) if k > 0 else Gfull
+#                 #
+#                 # if not both:
+#                 #     G = Gfull[:2, :2]
+#                 #     C = Cfull[:2, :2]
+#                 # else:
+#                 #     G, C = Gfull, Cfull
+#
+#                 # If inferring the angle, rotate the G matrix
+#                 if rotation:
+#                     S = tt.stacklists([[tt.cos(alpha), -tt.sin(alpha)],
+#                                        [tt.sin(alpha), tt.cos(alpha)]])
+#                     if both:
+#                         Z = tt.zeros((2, 2))
+#                         S = tt.stacklists([[S, Z], [Z, S]])
+#                 else:
+#                     S = tt.ones((4, 4))
+#
+#                 def G(real):
+#                     return S.dot(Gfull(real)).dot(S.T)
+#
+#                 def C(real):
+#                     return S.dot(Cfull(real)).dot(S.T)
+#
+#                 Vxx = (G(1) + C(1)) / 2
+#                 Vxy = (-G(0) + C(0)) / 2
+#                 Vyx = (G(0) + C(0)) / 2
+#                 Vyy = (G(1) - C(1)) / 2
+#                 # print(tt.ones_like(Vxx[0]))
+#
+#                 full_cov_real = tt.concatenate([
+#                     tt.concatenate([Vxx, Vxy], axis=1),
+#                     tt.concatenate([Vyx, Vyy], axis=1)],
+#                     axis=0)
+#
+#                 shape = 8 if both else 4
+#                 mu = np.zeros(shape=shape)
+#
+#                 pm.MvNormal('k' + str(k), mu=mu, cov=full_cov_real, observed=to_1D(dRk))
+#
+#             print('Start sampling')
+#             with stopwatch('Traces: '):
+#                 traces = pm.sample(10)
+#             print('Results: ', traces)
+#
+#             print('Starting MAP calculation')
+#             with stopwatch('MAP'):
+#                 map = pm.find_MAP(model=model, progressbar=True)
+#             print('MAP: ', map)
+
+
+def get_MAP_and_hessian(minimize_me, x0, verbose=False, tol=1e-5):
+    """
+    Get MLE and reliably calculate the Hessian determinant (through rescaling).
+
+    Returns:
+        (_min, det_inv_hess, success)
+    """
+    min_scale = tol
+    d = len(x0)
+    options_NM = {'disp': verbose, 'xatol': tol, 'fatol': tol, 'maxiter': 1000 * d}
+    options_BFGS = {'disp': verbose, 'gtol': tol}
+
+    with stopwatch('Minimum search (initial)'):
+        _min = minimize(minimize_me, x0, method='BFGS', options=options_BFGS)
+    hess_diag = nd.Hessdiag(minimize_me)(_min.x)
+    if verbose:
+        print('NM search 1:\n', _min)
+        print('Det. inv. Hessian:\t', 1 / np.linalg.det(nd.Hessian(minimize_me)(_min.x)))
+        print('\nDiagonal Hessian: ', hess_diag)
+
+    # Rescale
+    shift = _min.x
+    scales = np.array([np.max([np.abs(hd) ** (-1 / 2), min_scale]) for hd in hess_diag])
+    inv_hessian_rescale_factor = (scales ** 2).prod()
+    if verbose:
+        print('\n\nShift:\t', shift)
+        print('Scales:\t', scales)
+        print('\nAfter rescaling:')
+
+    def rescaled_minimize_me(args):
+        args = args * scales + shift
+        return minimize_me(args)
+
+    # Rerun search
+    with stopwatch('Minimum search (rescaled)'):
+        _min = minimize(rescaled_minimize_me, np.zeros_like(_min.x), method='Nelder-Mead',
+                        options=options_NM)
+    if verbose:
+        print('\nNM search 2', _min)
+        print('\nNew Hess:\n', nd.Hessian(rescaled_minimize_me)(_min.x))
+
+    # Evaluate inverse Hessian determinant
+    det_inv_hess = (1 / np.linalg.det(nd.Hessian(rescaled_minimize_me)(_min.x))
+                    * inv_hessian_rescale_factor)
+    if verbose:
+        print('Det. inv. Hessian:\t', det_inv_hess)
+        print('\n\n')
+
+    if not _min.success:
+        logging.warning('MAP search failed to converge')
+
+    # Calculate evidence
+    ln_evidence = ((d / 2) * log(2 * pi)
+                   + 1 / 2 * log(det_inv_hess)
+                   - _min.fun)
+
+    return _min.x * scales + shift, _min.fun, det_inv_hess, ln_evidence, _min.success

@@ -668,14 +668,14 @@ def get_ln_likelihood_func_no_link(ks, M, dt, dRks=None, same_D=False, both=Fals
             def ln_lklh(D1, n1, n2):
                 ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
                     dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D1, n1=n1, n2=n2, n12=n12, M=M,
-                    dt=dt, both=True, link = False) for i in range(len(ks))]
+                    dt=dt, both=True, link=False) for i in range(len(ks))]
                 ln_lklh_val = np.sum(ln_lklh_vals)
                 return ln_lklh_val
         else:
             def ln_lklh(D1, D2, n1, n2):
                 ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
                     dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
-                    dt=dt, both=True, link = False) for i in range(len(ks))]
+                    dt=dt, both=True, link=False) for i in range(len(ks))]
                 ln_lklh_val = np.sum(ln_lklh_vals)
                 return ln_lklh_val
 
@@ -686,7 +686,7 @@ def get_ln_likelihood_func_no_link(ks, M, dt, dRks=None, same_D=False, both=Fals
         def ln_lklh(D1, n1):
             ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
                 dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
-                dt=dt, both=False, link = False) for i in range(len(ks))]
+                dt=dt, both=False, link=False) for i in range(len(ks))]
             ln_lklh_val = np.sum(ln_lklh_vals)
             return ln_lklh_val
 
@@ -1348,8 +1348,8 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
     # else:
     #     raise RuntimeError(f'Method "{method}" not implemented')
 
-    def retry(i, _min_x, ln_evidence, fun):
-        print('Found minimum: ', fun, 'with ln evidence', ln_evidence, ' at ', to_dict(*_min_x))
+    def retry(i, _min_x, fun):
+        print('Found minimum: ', fun, ' at ', to_dict(*_min_x))
         return
 
     # def calculate_evidence_integral(points=None):
@@ -1483,8 +1483,9 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
 
         # _min_x = minimize(fnc, start_point_vals, tol=1e-5, method=method,
         #                options=options)
-        _min_x, fun, det_inv_hess, ln_evidence, success = get_MAP_and_hessian(minimize_me,
-                                                                              start_point_vals)
+        _min_x, fun, _, ln_evidence, success = get_MAP_and_hessian(minimize_me,
+                                                                              start_point_vals,
+                                                                              need_hessian=False)
 
         # # Save function for analysis
         # filename = os.path.join('function.pyc')
@@ -1510,8 +1511,9 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
                 _min_x[alpha_ind] = alpha
                 # _min_x = minimize(fnc, _min_x.x, tol=1e-5, method=method,
                 #                options=options)
-                _min_x, fun, det_inv_hess, ln_evidence, success = get_MAP_and_hessian(minimize_me,
-                                                                                      _min_x)
+                _min_x, fun, _, ln_evidence, success = get_MAP_and_hessian(minimize_me,
+                                                                                      _min_x,
+                                                                                      need_hessian=False)
 
         print('Result. Function value:\t', fun, '\tLocation:\t', to_dict(*_min_x))
 
@@ -1548,7 +1550,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         # #
         # # sys.exit(0)
 
-        element = (fun, ln_evidence, _min_x, success)
+        element = (fun, _min_x, success)
         mins.append(element)
 
         # Plot to check the minimum
@@ -1606,7 +1608,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         if times_best_found >= SAME_MINIMA_STOP_CRITERION:
             break
 
-        retry(i, _min_x, ln_evidence, fun)
+        retry(i, _min_x, fun)
 
     # Sort the results
     mins.sort(key=itemgetter(0))
@@ -1615,8 +1617,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
     ln_true_evidence = np.nan
 
     tries = i + 1
-    print(f'\nFound the following (minimi, ln_evidence) in {tries} tries:\n', [
-        (min[0], min[1]) for min in mins])
+    print(f'\nFound the following minima in {tries} tries:\n', [min[0] for min in mins])
 
     # Estimate how many of the best values are close
     fun_vals = [min[0] for min in mins]
@@ -1633,10 +1634,12 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
     # if np.isnan(ln_true_evidence):
     # Choose the best valid MLE (the det hess should be > 0 for it to be a minimum)
     # success = False
-    for fun, ln_laplace_evidence, _min_x, success in mins:
+    for fun, _min_x, success in mins:
         if success:
-
-            if not np.isnan(ln_laplace_evidence):
+            print('Calculating evidence.')
+            _min_x, fun, det_hess_inv, ln_evidence, success = get_MAP_and_hessian(minimize_me,
+                                                                                _min_x, need_hessian=True)
+            if not np.isnan(ln_evidence):
                 # If this was not a minimum, the returned value will be nan.
                 # success = True
                 break
@@ -1647,7 +1650,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
     # elif np.isnan(ln_laplace_evidence):
     #     ln_model_evidence = ln_true_evidence
     # else:
-    ln_model_evidence = np.nanmax([ln_laplace_evidence, ln_true_evidence])
+    ln_model_evidence = np.nanmax([ln_evidence, ln_true_evidence])  #todo: deprecated
     success = not np.isnan(ln_model_evidence)
     # if success:
     #     print('Rerunning BFGS on the best _min_x:\n',
@@ -1664,13 +1667,13 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         print(
             f'MLE search with (link = {link}) converged.\nTaking the best point seen so far:\n',
             (fun, MLE))
-        try:
-            lam, v = np.linalg.eig(np.linalg.inv(_min_x.hess_inv))
-            # print(f'Eigenvalues and eigenvectors of the Hessian for the MLE:\n', )
-            # print('Eigenvalues of the Hessian: ', lam)
-            # print('Eigenvectors: ', v)
-        except Exception:
-            pass
+        # try:
+        #     lam, v = np.linalg.eig(np.linalg.inv(_min_x.hess_inv))
+        #     # print(f'Eigenvalues and eigenvectors of the Hessian for the MLE:\n', )
+        #     # print('Eigenvalues of the Hessian: ', lam)
+        #     # print('Eigenvectors: ', v)
+        # except Exception:
+        #     pass
         # Save the MLE guess for further use
         save_MLE_guess(hash_no_trial=hash_no_trial, MLE_guess=MLE,
                        ln_posterior_value=-fun, link=link)
@@ -1919,7 +1922,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
 #             print('MAP: ', map)
 
 
-def get_MAP_and_hessian(minimize_me, x0, verbose=False, tol=1e-5):
+def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=False, tol=1e-5):
     """
     Get MLE and reliably calculate the Hessian determinant (through rescaling).
 
@@ -1937,7 +1940,7 @@ def get_MAP_and_hessian(minimize_me, x0, verbose=False, tol=1e-5):
         hess_diag = nd.Hessdiag(minimize_me)(_min.x)
         if verbose:
             print('NM search 1:\n', _min)
-            print('Det. inv. Hessian:\t', 1 / np.linalg.det(nd.Hessian(minimize_me)(_min.x)))
+            # print('Det. inv. Hessian:\t', 1 / np.linalg.det(nd.Hessian(minimize_me)(_min.x)))
             print('\nDiagonal Hessian: ', hess_diag)
 
         # Rescale
@@ -1959,12 +1962,16 @@ def get_MAP_and_hessian(minimize_me, x0, verbose=False, tol=1e-5):
                             options=options_NM)
         if verbose:
             print('\nNM search 2', _min)
-            print('\nNew Hess:\n', nd.Hessian(rescaled_minimize_me)(_min.x))
+            # print('\nNew Hess:\n', nd.Hessian(rescaled_minimize_me)(_min.x))
 
         # Evaluate inverse Hessian determinant
-        with stopwatch('Inverse Hessian calculation'):
-            det_inv_hess = (1 / np.linalg.det(nd.Hessian(rescaled_minimize_me)(_min.x))
-                            * inv_hessian_rescale_factor)
+        if need_hessian:
+            with stopwatch('Inverse Hessian calculation'):
+                det_inv_hess = (1 / np.linalg.det(nd.Hessian(rescaled_minimize_me)(_min.x))
+                                * inv_hessian_rescale_factor)
+        else:
+            det_inv_hess = np.nan
+
         if verbose:
             print('Det. inv. Hessian:\t', det_inv_hess)
             print('\n\n')

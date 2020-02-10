@@ -35,9 +35,6 @@ from support import (delete_data, hash_from_dictionary, load_data,
 # import theano.tensor as tt
 import timeit
 from stopwatch import stopwatch
-import sys
-import os
-import pickle, dill
 import warnings
 
 ln_neg_infty = - 1000 * log(10)
@@ -471,6 +468,12 @@ def new_likelihood_2_particles_x_link_one_point(dRk, k=1, D1=1, D2=3, n1=1, n2=1
     ATOL = 1e-5
     dRk = copy.copy(dRk)
 
+    assert link != np.isclose(n12, 0), "n12=0 is only allowed when link=False"
+
+    # print('n12', n12)
+    # print(link, np.isclose(n12, 0), not np.isclose(n12, 0), link == (not np.isclose(n12, 0)),
+    #       link != np.isclose(n12, 0))
+
     if np.any(np.array((D1, D2, n1, n2, n12)) < 0):
         return ln_neg_infty
 
@@ -665,26 +668,25 @@ def get_ln_likelihood_func_no_link(ks, M, dt, dRks=None, same_D=False, both=Fals
             def ln_lklh(D1, n1, n2):
                 ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
                     dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D1, n1=n1, n2=n2, n12=n12, M=M,
-                    dt=dt, both=True) for i in range(len(ks))]
+                    dt=dt, both=True, link = False) for i in range(len(ks))]
                 ln_lklh_val = np.sum(ln_lklh_vals)
                 return ln_lklh_val
         else:
             def ln_lklh(D1, D2, n1, n2):
                 ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
                     dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
-                    dt=dt, both=True) for i in range(len(ks))]
+                    dt=dt, both=True, link = False) for i in range(len(ks))]
                 ln_lklh_val = np.sum(ln_lklh_vals)
                 return ln_lklh_val
 
     else:
         D2 = 1
         n2 = 1
-        n12 = 0
 
         def ln_lklh(D1, n1):
             ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
                 dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
-                dt=dt, both=False) for i in range(len(ks))]
+                dt=dt, both=False, link = False) for i in range(len(ks))]
             ln_lklh_val = np.sum(ln_lklh_vals)
             return ln_lklh_val
 
@@ -1517,7 +1519,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         grad = nd.Gradient(minimize_me)(_min_x)
         grad_norm = np.max(abs(grad))
         print('\nGradient in the minimum:\t', grad, '\tMax. norm:\t', grad_norm)
-        print('\nManual Jacobian:\t', nd.Jacobian(minimize_me)(_min_x))
+        print('\nManual Jacobian:\t', grad)
         # print('Calculated Jacobian:\t', _min_x.jac, '\n')
         # print('A', out)
 
@@ -1924,53 +1926,55 @@ def get_MAP_and_hessian(minimize_me, x0, verbose=False, tol=1e-5):
     Returns:
         (_min, det_inv_hess, success)
     """
-    min_scale = tol
-    d = len(x0)
-    options_NM = {'disp': verbose, 'xatol': tol, 'fatol': tol, 'maxiter': 1000 * d}
-    options_BFGS = {'disp': verbose, 'gtol': tol}
+    with stopwatch('MAP and Hessian calculation'):
+        min_scale = tol
+        d = len(x0)
+        options_NM = {'disp': verbose, 'xatol': tol, 'fatol': tol, 'maxiter': 1000 * d}
+        options_BFGS = {'disp': verbose, 'gtol': tol}
 
-    with stopwatch('Minimum search (initial)'):
-        _min = minimize(minimize_me, x0, method='BFGS', options=options_BFGS)
-    hess_diag = nd.Hessdiag(minimize_me)(_min.x)
-    if verbose:
-        print('NM search 1:\n', _min)
-        print('Det. inv. Hessian:\t', 1 / np.linalg.det(nd.Hessian(minimize_me)(_min.x)))
-        print('\nDiagonal Hessian: ', hess_diag)
+        with stopwatch('Minimum search (initial)'):
+            _min = minimize(minimize_me, x0, method='BFGS', options=options_BFGS)
+        hess_diag = nd.Hessdiag(minimize_me)(_min.x)
+        if verbose:
+            print('NM search 1:\n', _min)
+            print('Det. inv. Hessian:\t', 1 / np.linalg.det(nd.Hessian(minimize_me)(_min.x)))
+            print('\nDiagonal Hessian: ', hess_diag)
 
-    # Rescale
-    shift = _min.x
-    scales = np.array([np.max([np.abs(hd) ** (-1 / 2), min_scale]) for hd in hess_diag])
-    inv_hessian_rescale_factor = (scales ** 2).prod()
-    if verbose:
-        print('\n\nShift:\t', shift)
-        print('Scales:\t', scales)
-        print('\nAfter rescaling:')
+        # Rescale
+        shift = _min.x
+        scales = np.array([np.max([np.abs(hd) ** (-1 / 2), min_scale]) for hd in hess_diag])
+        inv_hessian_rescale_factor = (scales ** 2).prod()
+        if verbose:
+            print('\n\nShift:\t', shift)
+            print('Scales:\t', scales)
+            print('\nAfter rescaling:')
 
-    def rescaled_minimize_me(args):
-        args = args * scales + shift
-        return minimize_me(args)
+        def rescaled_minimize_me(args):
+            args = args * scales + shift
+            return minimize_me(args)
 
-    # Rerun search
-    with stopwatch('Minimum search (rescaled)'):
-        _min = minimize(rescaled_minimize_me, np.zeros_like(_min.x), method='Nelder-Mead',
-                        options=options_NM)
-    if verbose:
-        print('\nNM search 2', _min)
-        print('\nNew Hess:\n', nd.Hessian(rescaled_minimize_me)(_min.x))
+        # Rerun search
+        with stopwatch('Minimum search (rescaled)'):
+            _min = minimize(rescaled_minimize_me, np.zeros_like(_min.x), method='Nelder-Mead',
+                            options=options_NM)
+        if verbose:
+            print('\nNM search 2', _min)
+            print('\nNew Hess:\n', nd.Hessian(rescaled_minimize_me)(_min.x))
 
-    # Evaluate inverse Hessian determinant
-    det_inv_hess = (1 / np.linalg.det(nd.Hessian(rescaled_minimize_me)(_min.x))
-                    * inv_hessian_rescale_factor)
-    if verbose:
-        print('Det. inv. Hessian:\t', det_inv_hess)
-        print('\n\n')
+        # Evaluate inverse Hessian determinant
+        with stopwatch('Inverse Hessian calculation'):
+            det_inv_hess = (1 / np.linalg.det(nd.Hessian(rescaled_minimize_me)(_min.x))
+                            * inv_hessian_rescale_factor)
+        if verbose:
+            print('Det. inv. Hessian:\t', det_inv_hess)
+            print('\n\n')
 
-    if not _min.success:
-        logging.warning('MAP search failed to converge')
+        if not _min.success:
+            logging.warning('MAP search failed to converge')
 
-    # Calculate evidence
-    ln_evidence = ((d / 2) * log(2 * pi)
-                   + 1 / 2 * log(det_inv_hess)
-                   - _min.fun)
+        # Calculate evidence
+        ln_evidence = ((d / 2) * log(2 * pi)
+                       + 1 / 2 * log(det_inv_hess)
+                       - _min.fun)
 
     return _min.x * scales + shift, _min.fun, det_inv_hess, ln_evidence, _min.success

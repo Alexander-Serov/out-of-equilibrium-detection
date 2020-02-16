@@ -9,13 +9,17 @@ import numpy as np
 import logging
 import pytest
 from likelihood import get_MAP_and_hessian
+from trajectory import Trajectory
+
+ABS_TOL = 1E-3
 
 
 def test_hessian_calculation():
-    tol = 1e-5
+    tol = ABS_TOL
 
     # Simple test
-    print('===Test 1: Simple function===')
+    print('=== Test 1: Simple function ===')
+
     def minimize_me(args):
         x, y, z = args
         return 100 * (x - 12) ** 2 + 5 * (y - 3) ** 2 + (z + 7) ** 2 / 100
@@ -23,14 +27,14 @@ def test_hessian_calculation():
     start_point_vals = (3, 2, 5)
     map, fun, det_hess_inv, ln_evidence, success = get_MAP_and_hessian(minimize_me,
                                                                        start_point_vals,
-                                                                  verbose=1)
+                                                                       verbose=1)
     assert map == pytest.approx((12, 3, -7), abs=tol)
     assert det_hess_inv == pytest.approx(1 / 40, abs=tol)
     assert ln_evidence == pytest.approx(0.91238, abs=tol)
     assert success
 
-    # Real function test
-    print('===Test 2: Complex function===')
+    # Real function test - 1
+    print('=== Test 2: Complex function ===')
     hessian_test_function_file = 'hessian_test_func.pyc'
     try:
         with open(hessian_test_function_file, 'rb') as file:
@@ -47,13 +51,41 @@ def test_hessian_calculation():
     start_point_vals = (3, 2, 5, 1, 2, 7)
     map, fun, det_hess_inv, ln_evidence, success = get_MAP_and_hessian(minimize_me,
                                                                        start_point_vals,
-                                                            verbose=1)
-    assert map == pytest.approx([2.99226962e-02, 6.78749721e-01, 1.18660116e+01, 9.00752443e+00,
-                                 1.21261985e+02, -2.31891746e-02], abs=tol)
-    assert det_hess_inv == pytest.approx(129.153532, abs=tol)
+                                                                       verbose=1)
+    assert map == pytest.approx(
+        [2.99227253e-02, 6.78750128e-01, 1.18660341e+01, 9.00752324e+00, 1.21261888e+02,
+         -2.31894553e-02], abs=tol)
+    assert det_hess_inv == pytest.approx(129.15415590768418, abs=tol)
     assert ln_evidence == pytest.approx(45.76465, abs=tol)
     assert success
 
+    # Real function test - 2
+    print('=== Test 3: Complex function ===')
+    hessian_test_function_file = 'hessian_test_func-2.pyc'
+    try:
+        with open(hessian_test_function_file, 'rb') as file:
+            minimize_me = dill.load(file)
+    except EOFError as e:
+        print('Encountered incomplete file\n', e)
+        raise
+    except FileNotFoundError:
+        raise
+    except Exception as e:
+        print('Unhandled exception while reading a data file', e)
+        raise
+
+    start_point_vals = (2, 1.5, 29, 45, 137, 0)
+    map, fun, det_hess_inv, ln_evidence, success = get_MAP_and_hessian(minimize_me,
+                                                                       start_point_vals,
+                                                                       verbose=2)
+
+    assert map == pytest.approx([1.99021090e-03, 4.81194514e-01, 2.20998632e+01, 1.55956517e+01,
+                                 1.24197374e+02, 1.96638748e-03], abs=tol)
+    assert det_hess_inv == pytest.approx(0.6511567823117265, abs=tol)
+    assert ln_evidence == pytest.approx(39.787001820166914, abs=tol)
+    assert success
+
+    ## Old
     # # Find MAP
     # # : Switch here to the search function from likelihood.py
     # # {'D1': 0.1864735353883898, 'D2': 1.3431483056003075, 'n1': 23.705008976373524,
@@ -138,6 +170,18 @@ def test_hessian_calculation():
     # # print('Man hess info: ', info)
 
 
+def test_get_MLE():
+    np.random.seed(0)
+
+    test_traj = Trajectory.from_parameter_dictionary(
+        {'D1': 0.004, 'D2': 0.4, 'n1': 1.0, 'n2': 1.0, 'n12': 0.02, 'M': 100, 'dt': 0.05,
+         'L0': 20.0, 'model': 'localized_different_D_detect_angle', 'angle': 0.0, 'trial': 18,
+         'recalculate': True}
+    )
+    print('\nLg Bayes factor for link: ', test_traj.lgB)
+    assert test_traj.lgB == pytest.approx(-7.57388, ABS_TOL)
+
+    np.random.seed()
 
 #
 #

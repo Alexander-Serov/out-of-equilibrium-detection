@@ -36,6 +36,14 @@ from support import (delete_data, hash_from_dictionary, load_data,
 import timeit
 from stopwatch import stopwatch
 import warnings
+import sys
+import colorama
+from colorama import Fore, Back, Style
+import os
+import dill
+import pickle
+
+colorama.init()
 
 ln_neg_infty = - 1000 * log(10)
 plot = False
@@ -386,7 +394,7 @@ def likelihood_2_particles_x_link_one_point(z, k=1, D1=1, D2=3, n1=1, n2=1, n12=
 
         if len(sigma2s_nonzero) == 0:
             # print('sigma2s: ', sigma2s)
-            logging.warn(
+            logging.warning(
                 'All input sigma2 are effectively zero. Returning 0 probability. Input lg sigmas: ' +
                 np.array_str(sigma2s)
                 + f'.\n Other parameters: k={k}, D1={D1}, D2={D2}, n1={n1}, n2={n2}, n12={n12}')
@@ -1348,118 +1356,13 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
     # else:
     #     raise RuntimeError(f'Method "{method}" not implemented')
 
-    def retry(i, _min_x, fun):
-        print('Found minimum: ', fun, ' at ', to_dict(*_min_x))
-        return
-
-    # def calculate_evidence_integral(points=None):
-    #     """
-    #     Calculate the evidence integral by numerical integration without Laplace approximation.
-    #     Use the found MLE as a single breakpoint in the integration for the link model. Currently deactivated.
-    #     """
-    #     if link:
-    #         return np.nan
-    #     points_in = points.copy()
-    #
-    #     # These intervals need to be updated if the a priori working region changes
-    #     all_integration_limits = {'D1': [0.01 / 10, 5 * 10], 'D2': [0.01 / 10, 5 * 10],
-    #                               'n1': [0.01 / 10, 10 * 10], 'n2': [0.01 / 10, 10 * 10],
-    #                               'n12': [0, 10 * 10]}
-    #
-    #     # Get the scale of the maximum of the posterior to normalize the integrand
-    #     # def ln_lklh(x): -mini
-    #     largest_ln_value = max([-minimize_me(point) for point in points])
-    #
-    #     # If fitting the link model, use only 1 breakpoint - the MLE
-    #     # Else use all break points
-    #     if link:
-    #         points = sorted(points_in, key=lambda x: -minimize_me(x))[-1:]
-    #
-    #     # Filter break points be removing those that are too close, separately along each axis
-    #     atol_points = 1e0
-    #     points = zip(*points)  # combine break points per axis
-    #     new_points = []
-    #     for points_1d in points:
-    #         points_1d = np.sort(points_1d)
-    #         new_points_1d = [points_1d[0]]
-    #         for p in points_1d[1:]:
-    #             if p - new_points_1d[-1] >= atol_points:
-    #                 new_points_1d.append(p)
-    #         new_points.append(new_points_1d)
-    #
-    #     print('Break points for direct integration:', new_points)
-    #
-    #     def integrand(*args):
-    #         """Renormalize the function before integration"""
-    #         return exp(-minimize_me(args) - largest_ln_value)
-    #
-    #     tol = 1e-1
-    #     opts = [{'points': el, 'epsabs': tol, 'epsrel': tol} for el in new_points]
-    #     integration_limits = [all_integration_limits[name] for name in names]
-    #     res = nquad(integrand, ranges=integration_limits, opts=opts)
-    #     print('Integration output: ', res)
-    #     # print('Largest ln value: ', largest_ln_value)
-    #
-    #     return log(res[0]) + largest_ln_value
-
-    # def calculate_laplace_approximation(_min_x):
-    #     """
-    #     The function locally calculates the integral of a given minimum by using a Laplace approximation (approximating the shape of the peak by a non-uniform Gaussian).
-    #     If the Hessian was calculated by the BFGS method, its values is used, otherwise, it is evaluated through finite differences.
-    #     """
-    #     if 'hess_inv' in _min_x and np.abs(np.linalg.det(_min_x.hess_inv) - 1) >= 1e-8:
-    #         # Require that the returned Hessian has really been evaluated
-    #         hess_inv = BFGS_hess_inv = _min_x.hess_inv
-    #         det_inv_hess = BFGS_det_inv_hess = np.linalg.det(hess_inv)
-    #
-    #     # else:
-    #     # # Otherwise, manually estimate the Hessian
-    #     print('Manually calculating the Hessian')
-    #     hess, info = nd.Hessian(minimize_me, full_output=True)(_min_x.x)
-    #     man_hess = hess
-    #     print('Info: ', info)
-    #
-    #     det_inv_hess = man_det_inv_hess = 1 / np.linalg.det(hess)
-    #
-    #     # hess_inv = np.nan
-    #
-    #     try:
-    #         print('BFGS det. hess_inv: ', BFGS_det_inv_hess)
-    #     except:
-    #         pass
-    #     print('Manual det. hess_inv: ', man_det_inv_hess, 1 / man_det_inv_hess,
-    #           np.linalg.det(np.linalg.inv(man_hess)))
-    #     try:
-    #         print('\nBFGS inv. hess: ', BFGS_hess_inv)
-    #     except:
-    #         pass
-    #     print('\n Manual inv. hess: ', np.linalg.inv(man_hess))
-    #     try:
-    #         print('Eigenvalues of the BFGS hessian: ', np.linalg.eigvals(BFGS_hess_inv))
-    #     except:
-    #         pass
-    #     print('Eigenvalues of the manual hessian: ', np.linalg.eigvals(np.linalg.inv(man_hess)))
-    #     print('And eigenvectors: ', np.linalg.eig(np.linalg.inv(man_hess)))
-    #
-    #     if det_inv_hess <= 0:
-    #         # If the Hessian is non-positive, it was not a minimum
-    #         return np.nan
-    #
-    #     # Calcualte evidence
-    #     # Remember `minimize_me` is the negative log likelihood
-    #     ln_model_evidence = ((d / 2) * log(2 * pi)
-    #                          + 1 / 2 * log(det_inv_hess)
-    #                          - minimize_me(_min_x.x))
-    #     print(
-    #         'Laplace approximation of the normalized integral ',
-    #         exp((d / 2) * log(2 * pi)
-    #             + 1 / 2 * log(det_inv_hess)))
-    #     # print(' Hess_inv', det_inv_hess, hess_inv)
-    #     return ln_model_evidence
+    # def retry(i, _min_x, fun):
+    #     print('Found minimum: ', fun, ' at ', to_dict(*_min_x))
+    #     return
 
     mins = []
     for i in range(max_tries):
-        print(f'\nMLE search. Try {i + 1}/{max_tries}...')
+        print(f'\n{Fore.CYAN}MLE search. Try {i + 1}/{max_tries}...{Style.RESET_ALL}')
 
         # On the first try, load the MLE guess from file. Else sample from the prior
         if i == 0:
@@ -1467,10 +1370,14 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
                 hash_no_trial=hash_no_trial, link=link)
             if not success_load or np.any([not name in start_point for name in names]):
                 start_point = sample_from_the_prior(names)
+                # start_point = {'D1': 0.003922065909638014, 'D2': 0.013698187786155717,
+                #              'n1': 0.7670151434765222,
+                #  'n2': 0.9639546821992164, 'n12': 142.99688784345093, 'alpha': 0.5876838820582692}
+                # s
                 print(
-                    f'Sampling an origin point from the prior:\n', start_point)
+                    f'Sampling an origin point from the prior:', start_point)
             else:
-                print('Starting MLE guess loaded successfully:\n', (start_point, old_ln_value))
+                print('Starting MLE guess loaded successfully:', (start_point, old_ln_value))
 
         #
 
@@ -1480,13 +1387,17 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
                 f'Sampling an origin point from the prior:\n', start_point)
 
         start_point_vals = to_list(start_point)
+        # warnings.warn('Temporary hack')
+        # start_point_vals = [3.92206591e-03, 1.36981878e-02, 7.67015143e-01, 9.63954682e-01,
+        #  1.42996888e+02, 5.87683882e-01]
 
         # _min_x = minimize(fnc, start_point_vals, tol=1e-5, method=method,
         #                options=options)
         _min_x, fun, _, ln_evidence, success = get_MAP_and_hessian(minimize_me,
-                                                                              start_point_vals,
-                                                                              need_hessian=False)
-
+                                                                   start_point_vals,
+                                                                   need_hessian=False)
+        # need_hessian=True, verbose = 2)
+        #
         # # Save function for analysis
         # filename = os.path.join('function.pyc')
         # try:
@@ -1507,21 +1418,21 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
             if shifted:
                 print(
                     f'Interaction angle shifted to [-pi/2, pi/2] interval from {alpha_old} to '
-                    f'{alpha}, and then recalculated.')
+                    f'{alpha}. Recalculation scheduled.')
                 _min_x[alpha_ind] = alpha
                 # _min_x = minimize(fnc, _min_x.x, tol=1e-5, method=method,
                 #                options=options)
                 _min_x, fun, _, ln_evidence, success = get_MAP_and_hessian(minimize_me,
-                                                                                      _min_x,
-                                                                                      need_hessian=False)
+                                                                           _min_x,
+                                                                           need_hessian=False)
 
-        print('Result. Function value:\t', fun, '\tLocation:\t', to_dict(*_min_x))
+        print('Found minimum ', fun, '\tat\t', to_dict(*_min_x))
 
         # print(np.array(_min_x.x).squeeze())
         grad = nd.Gradient(minimize_me)(_min_x)
         grad_norm = np.max(abs(grad))
-        print('\nGradient in the minimum:\t', grad, '\tMax. norm:\t', grad_norm)
-        print('\nManual Jacobian:\t', grad)
+        # print('\nGradient in the minimum:\t', grad, '\tMax. norm:\t', grad_norm)
+        # print('\nManual Jacobian:\t', grad)
         # print('Calculated Jacobian:\t', _min_x.jac, '\n')
         # print('A', out)
 
@@ -1537,21 +1448,11 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
                   f'current result will be ignored')
             ln_evidence = np.nan
 
-        # # if not _min_x.success:
-        # print('Relaunching from the minimum')
-        #
-        # min1 = minimize(fnc, _min_x.x, tol=1e-5, method=method, options=options_BFGS)
-        # print('\nBFGS Restart from found point:\n', min1)
-        # calculate_laplace_approximation(min1)
-        #
-        # minNM = minimize(fnc, _min_x.x, tol=1e-5, method='Nelder-Mead', options=options_NM)
-        # print('Neldear-Mead from the found point:\n', minNM)
-        # calculate_laplace_approximation(minNM)
-        # #
-        # # sys.exit(0)
-
-        element = (fun, _min_x, success)
-        mins.append(element)
+        if success:
+            element = (fun, _min_x, success)
+            mins.append(element)
+        else:
+            print('The found minimum did not satisfy conditions. Skipping.')
 
         # Plot to check the minimum
         if plot:
@@ -1603,12 +1504,14 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         # add 1 to count the value itself
         times_best_found = np.sum(diffs < MINIMA_CLOSE_ATOL) + 1
         print(
-            f'\n(Number of best minima so far) / (stop criterion): {times_best_found} /'
-            f' {SAME_MINIMA_STOP_CRITERION}')
+            f'Best minimum so far: {fun_vals[0]}\n' +
+            Fore.GREEN + f'(Number of best minima so far) / (stop criterion):'
+            f' {times_best_found} /'
+            f' {SAME_MINIMA_STOP_CRITERION}' + Style.RESET_ALL)
         if times_best_found >= SAME_MINIMA_STOP_CRITERION:
             break
 
-        retry(i, _min_x, fun)
+        # retry(i, _min_x, fun)
 
     # Sort the results
     mins.sort(key=itemgetter(0))
@@ -1617,7 +1520,8 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
     ln_true_evidence = np.nan
 
     tries = i + 1
-    print(f'\nFound the following minima in {tries} tries:\n', [min[0] for min in mins])
+    print(f'\nFound the following {len(mins)} minima in {tries} tries:')
+    [print(min[0], '\tat\t', to_dict(*min[1])) for min in mins]
 
     # Estimate how many of the best values are close
     fun_vals = [min[0] for min in mins]
@@ -1638,11 +1542,18 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         if success:
             print('Calculating evidence.')
             _min_x, fun, det_hess_inv, ln_evidence, success = get_MAP_and_hessian(minimize_me,
-                                                                                _min_x, need_hessian=True)
+                                                                                  _min_x,
+                                                                                  need_hessian=True)
             if not np.isnan(ln_evidence):
                 # If this was not a minimum, the returned value will be nan.
                 # success = True
+                print(f'Evidence calculation accepted: {ln_evidence}')
                 break
+            else:
+                print('Evidence was NaN. Proceeding to the next minimum')
+                warnings.warn('We may be recalculating the same Hessian. The code will work, '
+                              'but optimization is necessary')
+
     # Compare with true minimum if calculated and take the largest.
     # This is because the Laplace approximation always provides a lower-bound estimate
     # if np.isnan(ln_true_evidence):
@@ -1650,7 +1561,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
     # elif np.isnan(ln_laplace_evidence):
     #     ln_model_evidence = ln_true_evidence
     # else:
-    ln_model_evidence = np.nanmax([ln_evidence, ln_true_evidence])  #todo: deprecated
+    ln_model_evidence = np.nanmax([ln_evidence, ln_true_evidence])  # todo: deprecated
     success = not np.isnan(ln_model_evidence)
     # if success:
     #     print('Rerunning BFGS on the best _min_x:\n',
@@ -1665,8 +1576,8 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
 
     if success:
         print(
-            f'MLE search with (link = {link}) converged.\nTaking the best point seen so far:\n',
-            (fun, MLE))
+            f'MLE search with (link = {link}) converged.\nTaking the best point seen so far '
+            f'fun={fun},\nln_evidence={ln_evidence},\n MLE={MLE})')
         # try:
         #     lam, v = np.linalg.eig(np.linalg.inv(_min_x.hess_inv))
         #     # print(f'Eigenvalues and eigenvectors of the Hessian for the MLE:\n', )
@@ -1922,35 +1833,40 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
 #             print('MAP: ', map)
 
 
-def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=False, tol=1e-5):
+def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=1, tol=1e-5):
     """
     Get MLE and reliably calculate the Hessian determinant (through rescaling).
 
     Returns:
         (_min, det_inv_hess, success)
     """
-    with stopwatch('MAP and Hessian calculation'):
-        min_scale = tol
-        d = len(x0)
-        options_NM = {'disp': verbose, 'xatol': tol, 'fatol': tol, 'maxiter': 1000 * d}
-        options_BFGS = {'disp': verbose, 'gtol': tol}
+    # verbose = 2  # todo
+    VRBS_LVL_ALL = 2
+    VRBS_LVL_MINIMUM = 1
+    hessian_tries = 3
+    name = 'Hessian calculation' if need_hessian else 'MAP calculation'
 
-        with stopwatch('Minimum search (initial)'):
-            _min = minimize(minimize_me, x0, method='BFGS', options=options_BFGS)
-        hess_diag = nd.Hessdiag(minimize_me)(_min.x)
-        if verbose:
-            print('NM search 1:\n', _min)
-            # print('Det. inv. Hessian:\t', 1 / np.linalg.det(nd.Hessian(minimize_me)(_min.x)))
-            print('\nDiagonal Hessian: ', hess_diag)
+    # # Save function for analysis
+    # filename = os.path.join('function.pyc')
+    # try:
+    #     with open(filename, 'wb') as file:
+    #         dill.dump(minimize_me, file, pickle.HIGHEST_PROTOCOL)
+    # except Exception as e:
+    #     logging.warning("Enoucntered unhandled exception while saving a data file: ", e)
 
-        # Rescale
-        shift = _min.x
-        scales = np.array([np.max([np.abs(hd) ** (-1 / 2), min_scale]) for hd in hess_diag])
-        inv_hessian_rescale_factor = (scales ** 2).prod()
-        if verbose:
-            print('\n\nShift:\t', shift)
-            print('Scales:\t', scales)
-            print('\nAfter rescaling:')
+    # Declarations
+    min_scale = tol
+    d = len(x0)
+    options_NM = {'disp': verbose >= VRBS_LVL_ALL, 'xatol': tol, 'fatol': tol, 'maxiter': 1000 * d}
+    options_BFGS = {'disp': verbose >= VRBS_LVL_ALL, 'gtol': tol}
+
+    def get_scales(hess_diag):
+        # scales = np.array([np.nanmax([np.abs(hd) ** (-1 / 2), min_scale]) for hd in hess_diag])
+        scales = np.abs(hess_diag) ** (-1 / 2)
+        scales[np.logical_not(np.isfinite(scales))] = min_scale  # filter np.inf and np.nan
+        return scales
+
+    def find_MAP_rescaled(shift, scales):
 
         def rescaled_minimize_me(args):
             args = args * scales + shift
@@ -1958,30 +1874,90 @@ def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=False, tol=1
 
         # Rerun search
         with stopwatch('Minimum search (rescaled)'):
-            _min = minimize(rescaled_minimize_me, np.zeros_like(_min.x), method='Nelder-Mead',
+            _min = minimize(rescaled_minimize_me, np.zeros(d), method='Nelder-Mead',
                             options=options_NM)
-        if verbose:
+        if verbose >= VRBS_LVL_ALL:
             print('\nNM search 2', _min)
             # print('\nNew Hess:\n', nd.Hessian(rescaled_minimize_me)(_min.x))
-
-        # Evaluate inverse Hessian determinant
-        if need_hessian:
-            with stopwatch('Inverse Hessian calculation'):
-                det_inv_hess = (1 / np.linalg.det(nd.Hessian(rescaled_minimize_me)(_min.x))
-                                * inv_hessian_rescale_factor)
-        else:
-            det_inv_hess = np.nan
-
-        if verbose:
-            print('Det. inv. Hessian:\t', det_inv_hess)
-            print('\n\n')
 
         if not _min.success:
             logging.warning('MAP search failed to converge')
 
-        # Calculate evidence
-        ln_evidence = ((d / 2) * log(2 * pi)
-                       + 1 / 2 * log(det_inv_hess)
-                       - _min.fun)
+        return _min, rescaled_minimize_me
 
-    return _min.x * scales + shift, _min.fun, det_inv_hess, ln_evidence, _min.success
+    def calculate_hessian(rescaled_minimize_me, scales):
+        with stopwatch('Inverse Hessian calculation'):
+            hess = nd.Hessian(rescaled_minimize_me)(_min.x)
+            det_inv_hess = (1 / np.linalg.det(hess)
+                            * inv_hessian_rescale_factor(scales))
+        return det_inv_hess, hess
+
+    def inv_hessian_rescale_factor(scales):
+        return (scales ** 2).prod()
+
+    # Calculation
+    with stopwatch(name):
+        with stopwatch('Minimum search (initial)'):
+            _min = minimize(minimize_me, x0, method='BFGS', options=options_BFGS)
+        print(f'Approximate MAP found: {_min.fun}')
+        hess_diag = nd.Hessdiag(minimize_me, step=1e-2, order=12)(_min.x)
+        if verbose >= VRBS_LVL_ALL:
+            print('NM search 1:\n', _min)
+            # print('Det. inv. Hessian:\t', 1 / np.linalg.det(nd.Hessian(minimize_me)(_min.x)))
+            print('\nHess. diag: ', hess_diag)
+
+        shift = _min.x
+        scales = np.ones(d)
+        assert np.all(np.isfinite(shift))
+
+        # Calculate Hessian
+        for i in range(hessian_tries):
+            # Rescale
+            scales *= get_scales(hess_diag)
+
+            if verbose >= VRBS_LVL_MINIMUM:
+                print(f'Shift:\t{shift}\nScales:\t{scales}')
+            assert np.all(np.isfinite(scales))
+
+            # Retry with higher precision
+            _min, rescaled_minimize_me = find_MAP_rescaled(shift, scales)
+            map = _min.x * scales + shift
+
+            if not need_hessian:
+                det_inv_hess = np.nan
+                ln_evidence = np.nan
+                return map, _min.fun, det_inv_hess, ln_evidence, _min.success
+
+            print(f'Hessian calculation. Try {i + 1}/{hessian_tries}.')
+
+            det_inv_hess, hess = calculate_hessian(rescaled_minimize_me, scales)
+            if det_inv_hess > 0:
+                ln_evidence = ((d / 2) * log(2 * pi) + 1 / 2 * log(det_inv_hess) - _min.fun)
+                print('Hessian calculated successfully!')
+                if verbose:
+                    print('Det. hess. inv.: ', det_inv_hess)
+                    print('MAP:', map)
+                    print('Log evidence:', ln_evidence)
+                return map, _min.fun, det_inv_hess, ln_evidence, _min.success
+
+            # If the Hessian is negative, rescale and try again
+            print(f'The minimum was found correctly, but the Hessian is negative.')
+            hess_diag = nd.Hessdiag(rescaled_minimize_me)(_min.x)
+            if verbose >= VRBS_LVL_ALL:
+                print('MAP:', map)
+                print('Det. hess. inv.: ', det_inv_hess)
+                print('Hess. diag:\n', hess_diag)
+                print('Hessian:\n', hess)
+
+            # assert not np.any(np.isnan(scales))
+
+            # if verbose >= VRBS_LVL_MINIMUM:
+            #     print(f'Shift:\t{shift}\nScales:\t{scales}')
+
+            # _min, rescaled_minimize_me = find_MAP_rescaled(shift, scales)
+
+        raise RuntimeError(f'Unable to calculate the Hessian in a true minimum after '
+                           f'{hessian_tries} tries. Unable to proceed.')
+        ln_evidence = np.nan
+
+    return map, _min.fun, det_inv_hess, ln_evidence, _min.success

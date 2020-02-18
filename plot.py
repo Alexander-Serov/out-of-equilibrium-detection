@@ -227,6 +227,7 @@ def calculate_and_plot_contour_plot(
 
         lg_BF_vals = np.full([len(Ms), len(Xs), len(Ys), trials], np.nan)
         simulation_time = np.empty_like(lg_BF_vals)
+        full_time = np.empty_like(lg_BF_vals)
 
         for trial in trange(trials, desc='Loading/scheduling calculations'):
             args_dict.update({'trial': trial})
@@ -242,8 +243,13 @@ def calculate_and_plot_contour_plot(
 
                         lg_BF_vals[ind_M, ind_x, ind_y, trial], ln_evidence_with_link, \
                         ln_evidence_free, loaded, _hash, simulation_time[
-                            ind_M, ind_x, ind_y, trial], dict_data = \
+                            ind_M, ind_x, ind_y, trial], traj = \
                             simulate_and_calculate_Bayes_factor(**args_dict)
+
+                        times = {'simulation_time': traj.simulation_time,
+                                 'calculation_time_link': traj.calculation_time_link,
+                                 'calculation_time_no_link': traj.calculation_time_no_link}
+                        full_time[ind_M, ind_x, ind_y, trial] = np.sum(list(times.values()))
 
                         if cluster and not loaded:
                             file.write(get_cluster_args_string(**args_dict))
@@ -256,12 +262,20 @@ def calculate_and_plot_contour_plot(
         position_file = 'position.dat'
         with open(position_file, 'w') as fp_position:
             fp_position.write('{0:d}'.format(0))
-    print(f'{cluster_counter} calculations scheduled for the cluster')
+
 
     # %% Calculating means and CI over trials
     median_lg_BFs = np.nanmedian(lg_BF_vals, axis=3)
     median_simulation_time_hours = np.nanmedian(simulation_time, axis=3)
-    # print(lg_BF_vals)
+    avg_time = np.nanmean(full_time)
+    count = np.sum(np.logical_not(np.isnan(full_time)))
+    sum_hours = np.sum(full_time) / 3600 / count * np.prod(full_time.shape)
+    around = 'around ' if count < np.prod(full_time.shape) else ''
+
+    print(f'On average, it took {avg_time:.1f} s to calculate one of the {count:d} recorded '
+          f'points.')
+    print(f'Calculation of the whole plot took {around}{sum_hours:.1f} hours of CPU time.')
+    print(f'{cluster_counter} calculations scheduled for the cluster')
 
     if trials > 1:
         CIs = np.full([len(Ms), len(Xs), len(Ys), 2], np.nan)

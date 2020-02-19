@@ -252,8 +252,15 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
                 MLE_guesses[hash_no_trial] = (MLE_guess, ln_posterior_value)
 
             # Save to file
-            with open(filename, 'wb') as file:
+            temp_filename = filename + '_tmp'
+            with open(temp_filename, 'wb') as file:
                 pickle.dump(MLE_guesses, file, pickle.HIGHEST_PROTOCOL)
+            try:
+                os.unlink(filename)
+            except FileNotFoundError:
+                pass
+            os.rename(temp_filename, filename)
+
 
         print('Saved MLE guess updated successfully.')
         return True

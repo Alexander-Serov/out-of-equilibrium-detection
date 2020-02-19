@@ -18,6 +18,7 @@ from filelock import FileLock, Timeout
 from scipy.optimize import root, root_scalar
 from scipy.special import gamma
 from pickle import UnpicklingError
+import warnings
 
 # from calculate import max_abs_lg_B_per_M
 
@@ -57,13 +58,14 @@ def locally_rotate_a_vector(dR, lag):
         rotated[:, j] = RM @ dR[:, j + lag]
     return rotated
 
+
 def get_cluster_args_string(D1, D2, n1, n2, n12, dt, L0, M, model, trial=0,
                             recalculate_trajectory=False, recalculate_BF=False, verbose=False,
-                            rotation=True, angle=None, gamma = None, **kwargs):
+                            rotation=True, angle=None, gamma=None, **kwargs):
     args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g}  --dt={dt:g} ' \
                   '--L={L0:g} --trial={trial:d} --M={M} --model={model}'.format(
-        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12,  dt=dt,  L0=L0, trial=trial,
-        M=M, model = model)
+        D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, dt=dt, L0=L0, trial=trial,
+        M=M, model=model)
     if recalculate_trajectory:
         args_string += ' --recalculate_trajectory'
     if recalculate_BF:
@@ -99,7 +101,7 @@ def _hash_me(*args):
     return hash.hexdigest()
 
 
-def hash_from_dictionary(parameters, dim=2,use_model = False):
+def hash_from_dictionary(parameters, dim=2, use_model=False):
     """
     Keeping `use_model` for compatibility with old calculated data. Remove when not necessary.
     """
@@ -169,7 +171,6 @@ def save_data(dict_data, hash):
         return False
 
 
-
 class stopwatch:
     """
     A class for measuring execution time.
@@ -209,8 +210,6 @@ def stopwatch_dec(func):
     return wrapper
 
 
-
-
 def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_update=False):
     """
     For a faster MLE search on the next occasion, save the previous result in a separate file. Naturally, this guess is the same across all trials.
@@ -234,10 +233,14 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
     try:
         with lock:
             # Load guesses
-            with open(filename, 'rb') as file:
-                MLE_guesses = pickle.load(file)
-                if not isinstance(MLE_guesses, dict):
-                    MLE_guesses={}
+            try:
+                with open(filename, 'rb') as file:
+                    MLE_guesses = pickle.load(file)
+            except FileNotFoundError:
+                pass
+
+            if 'MLE_guesses' not in locals() or not isinstance(MLE_guesses, dict):
+                MLE_guesses = {}
 
             # Update value if lower
             if hash_no_trial in MLE_guesses.keys():
@@ -275,7 +278,6 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
     #         pass
     # else:
     #     success = 'file_not_found'
-
 
     # if success_load is 'file_not_found':
     #     MLE_guesses = {}
@@ -323,16 +325,23 @@ def load_all_MLE_guesses():
 
     try:
         with lock:
-            with open(filename, 'rb') as file:
-                MLE_guesses = pickle.load(file)
-        if isinstance(MLE_guesses, dict):
-            success = True
+            try:
+                with open(filename, 'rb') as file:
+                    MLE_guesses = pickle.load(file)
+            except FileNotFoundError:
+                pass
+            except IOError as e:
+                logging.warning("MLE guess file does not exist: ", e)
+            except EOFError:
+                logging.warning("Found a corrupt MLE guess file. The file will be rest.")
+                os.unlink(filename)
+            except Exception as e:
+                logging.warning('Unhandled exception while loading MLE guesses: ', e)
+            if isinstance(MLE_guesses, dict):
+                success = True
+
     except Timeout:
         logging.warning("MLE guess file is in use by another application. Skipping MLE guess load.")
-    except IOError as e:
-        logging.warning("MLE guess file does not exist: ", e)
-    except Exception as e:
-        logging.warning('Unhandled exception while loading MLE guesses: ', e)
 
     return MLE_guesses, success
 

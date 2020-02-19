@@ -15,6 +15,8 @@ from simulate import simulate_2_confined_particles_with_fixed_angle_bond
 from support import (delete_data, hash_from_dictionary, load_data, save_data,
                      stopwatch, stopwatch_dec)
 from trajectory import Trajectory
+import logging
+import sys
 
 max_abs_lg_B_per_M = 2
 
@@ -200,6 +202,8 @@ def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, dt, angle, L0, tria
         (D1, D2, n1, n2, n12, dt, angle, L0, trial, M))}
     lg_BF_val, ln_evidence_with_link, ln_evidence_free = [np.nan] * 3
 
+
+
     # hash, _ = hash_from_dictionary(dim=2, parameters=true_parameters)
     #
     # # Send to cluster if any recalculation
@@ -228,13 +232,20 @@ def simulate_and_calculate_Bayes_factor(D1, D2, n1, n2, n12, dt, angle, L0, tria
     traj = Trajectory(D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M, dt=dt, L0=L0, trial=trial,
                       angle=angle, recalculate=recalculate_trajectory, dry_run=cluster,
                       model=model)
+    # print(traj.parameters)
+    # print(traj.ln_model_evidence_with_link)
+    # print(traj.ln_model_evidence_no_link)
+    # print(traj.lgB)
+    # sys.exit(0)
+
     # print(traj.hash)
     # print(D1, D2, n1, n2, n12, dt, angle, L0, trial, M, model, recalculate_trajectory)
     loaded = False if np.isnan(traj.lgB) else True
 
+
     return traj.lgB, traj.ln_model_evidence_with_link, traj.ln_model_evidence_no_link, loaded, \
            traj.hash, traj.simulation_time, traj
-        # ,        loaded,      dict_data
+    # ,        loaded,      dict_data
 
 
 def simulate_and_calculate_Bayes_factor_terminal(arg_str, cluster=False):

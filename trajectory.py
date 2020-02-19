@@ -14,8 +14,7 @@ from likelihood import (get_ln_likelihood_func_2_particles_x_link,
                         get_ln_likelihood_func_free_hookean_no_link_same_D,
                         get_ln_likelihood_func_free_hookean_with_link_same_D,
                         get_ln_likelihood_func_no_link, get_ln_prior_func,
-                        get_MLE, max_expected_D, max_expected_n,
-                        max_expected_n12)
+                        get_MLE,max_expected_D, max_expected_eta, max_expected_eta12)
 from simulate import (simulate_2_confined_particles_with_fixed_angle_bond,
                       simulate_a_free_hookean_dumbbell)
 from support import hash_from_dictionary, load_data, save_data, stopwatch
@@ -23,20 +22,9 @@ from support import hash_from_dictionary, load_data, save_data, stopwatch
 
 class Trajectory:
     def __init__(self, D1=2.0, D2=0.4, n1=1.0, n2=1.0, n12=30.0, M=1000, dt=0.05, L0=10.0,
-                 trial=0, angle=-np.pi / 3, recalculate=False, dry_run=False, plot=False,
+                 trial=0, angle=-np.pi / 3, recalculate=False, recalculate_BF=False,
+                 dry_run=False, plot=False,
                  model='localized_different_D', dim=2, verbose=True):
-        """
-        :param n1: Localization constant (k1/gamma) of particle 1. Both n12 and n2 must be set to
-        0 for a free dumbbell simulation.
-
-        :param n2: Localization constant (k2/gamma) of particle 2. Both n12 and n2 must be set to
-        0 for a free dumbbell simulation.
-
-        :param model: {'free_same_D', 'free_different_D', 'localized_same_D',
-        'localized_different_D'}    Define the model to fit to the simulated data.
-
-        :param dim: Dimensionality of the problem. For the moment, only 2D is supported.
-        """
 
         # Parameters for hash
         self.D1 = D1
@@ -62,10 +50,13 @@ class Trajectory:
             self.simulation_function = simulate_2_confined_particles_with_fixed_angle_bond
 
         self.recalculate = recalculate
+        self.recalculate_BF = recalculate_BF
         self.dry_run = dry_run
         self.plot = plot
         self.verbose = verbose
-        self._ln_prior, self._sample_from_the_prior = get_ln_prior_func()
+        self._ln_prior, self._sample_from_the_prior, self.prior_hash = get_ln_prior_func(self.dt)
+        self.parameters['prior_hash'] = self.prior_hash
+        # print('Prior hash:', self.prior_hash)
 
         # Variables calculated later
         self._t, self._R, self._dR, self._dRk, self._ks, self._lgB, self._MLE_link, \
@@ -81,6 +72,15 @@ class Trajectory:
         self._hash, self._hash_no_trial = self.calculate_hash()
         if not self.recalculate:
             self._load_data()
+
+            if self.recalculate_BF:
+                # Clean everything except the trajectory
+                new_dict_data = {**self.parameters}
+                for key in 't R dR _simulation_time'.split():
+                    if key in self._dict_data:
+                        new_dict_data.update({key: self._dict_data[key]})
+                self._dict_data = new_dict_data
+                self._save_data()
 
         # Choose a model to fit
         if not self.dry_run:
@@ -477,9 +477,9 @@ class Trajectory:
         # Check if the prior will allow inference for this parameters
         dct = {'D1': (self.D1, max_expected_D),
                'D2': (self.D2, max_expected_D),
-               'n1': (self.n1, max_expected_n),
-               'n2': (self.n2, max_expected_n),
-               'n12': (self.n12, max_expected_n12)}
+               'n1': (self.n1, max_expected_eta/self.dt),
+               'n2': (self.n2, max_expected_eta/self.dt),
+               'n12': (self.n12, max_expected_eta12/self.dt)}
 
         for key, value in dct.items():
             # print(key, value)
@@ -519,8 +519,9 @@ if __name__ == '__main__':
     # )
 
     test_traj = Trajectory.from_parameter_dictionary(
-        {'D1': 0.004, 'D2': 0.4, 'n1': 1.0, 'n2': 1.0, 'n12': 31.0, 'M': 7, 'dt': 0.05,
-         'L0': 20.0, 'model': 'localized_different_D_detect_angle', 'angle': 0.0, 'trial': 4}
+        {'D1': 0.004, 'D2': 0.4, 'n1': 1.0, 'n2': 1.0, 'n12': 30.0, 'M': 7, 'dt': 0.05,
+         'L0': 20.0, 'model': 'localized_different_D_detect_angle', 'angle': 0.0, 'trial': 4,
+         'recalculate_BF': 1, 'verbose': 2}
     )
 
     # print(test_traj.dR.shape)

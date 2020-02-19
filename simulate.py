@@ -31,7 +31,7 @@ import sys
 def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
                                                         recalculate=False, save_figure=False,
                                                         file=r'.\trajectory.dat', seed=None,
-                                                        verbose = False, show = True):
+                                                        verbose=False, show=True):
     """
     Simulate the trajectories of two particles connected by 1 spring and only along the x axis.
     Units of measurements:
@@ -80,7 +80,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
 
             # Plot
             if plot:
-                plot_trajectories(R, save=save_figure)
+                plot_trajectories(t=t, R=R, dR=dR, true_parameters=parameters, save=save_figure)
 
             # print(f'Trajectories reloaded. Hash: {hash}')
             return t, R, dR, hash
@@ -199,7 +199,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
     save_data(dict_data=dict_data, hash=hash)
 
     if plot:
-        plot_trajectories(t, R, dR, parameters, save=save_figure, show = show)
+        plot_trajectories(t, R, dR, parameters, save=save_figure, show=show)
     #
     # return (t, X, dX, Y, dY)
     return t, R, dR, hash
@@ -210,7 +210,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
 # @profile
 def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, save_figure=False,
                                      file=r'.\trajectory.dat', seed=None, verbose=False,
-                                     show = True):
+                                     show=True):
     """
     Simulate the trajectories of two particles connected by 1 spring and only along the x axis.
     Units of measurements:
@@ -255,7 +255,7 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     min_l0 = 20
     N_intermediate_points = 1
 
-    l0 = L0 / np.sqrt(4 * np.max([D1, D2])* dt)
+    l0 = L0 / np.sqrt(4 * np.max([D1, D2]) * dt)
     if l0 < min_l0:
         N_intermediate_points = int(np.ceil(min_l0 ** 2 / l0 ** 2))
 
@@ -415,13 +415,13 @@ def simulate_a_free_hookean_dumbbell(parameters, plot=False, recalculate=False, 
     # print('R: ', R)
 
     if plot:
-        plot_trajectories(t, R, dR, parameters, save=save_figure, show = show)
+        plot_trajectories(t, R, dR, parameters, save=save_figure, show=show)
     #
     # return (t, X, dX, Y, dY)
     return t, R, dR, hash
 
 
-def plot_trajectories(t, R, dR, true_parameters, save=False, show = True):
+def plot_trajectories(t, R, dR, true_parameters, save=False, show=True):
     # Calculate and plot the link angle
     ratio = (R[3, :] - R[1, :]) / (R[2, :] - R[0, :])
     angle = 180 / np.pi * np.arctan((R[3, :] - R[1, :]) / (R[2, :] - R[0, :]))
@@ -448,7 +448,7 @@ def plot_trajectories(t, R, dR, true_parameters, save=False, show = True):
     plt.plot(t, Ls)
     plt.xlabel('$t$, s')
     plt.ylabel('L, $\mu$m')
-    plt.ylim(ymin = 0)
+    plt.ylim(ymin=0)
 
     # plt.axis('equal')
     # plt.legend()
@@ -459,10 +459,10 @@ def plot_trajectories(t, R, dR, true_parameters, save=False, show = True):
     var_estimate_baricenter = np.mean(dR2_baricenter) * \
                               len(dR2_baricenter) / (len(dR2_baricenter) - 1)
     var_expected_baricenter = dt * (true_parameters['D1'] + true_parameters['D2'])
-    print(
-        '\nBaricenter variance estimated (um^2): {0:.2g}\texpected: {1:.2g}\tratio: {2:.2g}'.format(
-            var_estimate_baricenter, var_expected_baricenter,
-            var_estimate_baricenter / var_expected_baricenter))
+    print('\nSimulation completed.'
+          '\nBaricenter variance estimated (um^2): {0:.2g}\texpected: {1:.2g}\tratio: {2:.2g}'.format(
+        var_estimate_baricenter, var_expected_baricenter,
+        var_estimate_baricenter / var_expected_baricenter))
 
     # Check the evolution of the link length
     dLs = Ls[1:] - Ls[:-1]
@@ -507,7 +507,7 @@ if __name__ == '__main__':
                        'D2': 0.4,
                        'n1': 0,
                        'n2': 0,
-                       'n12': 2e-5/0.05,
+                       'n12': 2e-5 / 0.05,
                        'dt': 0.05,
                        'angle': -np.pi / 3,  # rad
                        'L0': 100 * np.sqrt(4 * 0.4 * 0.05),

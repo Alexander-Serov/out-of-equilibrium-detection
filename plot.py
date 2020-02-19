@@ -36,7 +36,7 @@ eta12_default = 1.5
 gamma_default = 5
 M_default = 1000
 dt = 0.05  # s
-D2 = 0.4  # um^2/s
+D2 = 0.1  # um^2/s
 L0 = 20
 
 
@@ -263,18 +263,18 @@ def calculate_and_plot_contour_plot(
         with open(position_file, 'w') as fp_position:
             fp_position.write('{0:d}'.format(0))
 
-
     # %% Calculating means and CI over trials
     median_lg_BFs = np.nanmedian(lg_BF_vals, axis=3)
     median_simulation_time_hours = np.nanmedian(simulation_time, axis=3)
     avg_time = np.nanmean(full_time)
     count = np.sum(np.logical_not(np.isnan(full_time)))
-    sum_hours = np.sum(full_time) / 3600 / count * np.prod(full_time.shape)
+    sum_hours = np.nansum(full_time) / 3600 / count * np.prod(full_time.shape)
     around = 'around ' if count < np.prod(full_time.shape) else ''
 
-    print(f'On average, it took {avg_time:.1f} s to calculate one of the {count:d} recorded '
-          f'points.')
-    print(f'Calculation of the whole plot took {around}{sum_hours:.1f} hours of CPU time.')
+    if not np.isnan(avg_time):
+        print(f'On average, it took {avg_time / 60:.1f} min to calculate each of the {count:d} '
+              f'recorded points.')
+        print(f'Calculation of the whole plot takes {around}{sum_hours:.1f} hours of CPU time.')
     print(f'{cluster_counter} calculations scheduled for the cluster')
 
     if trials > 1:
@@ -429,7 +429,7 @@ def contour_plot_localized_eta12_v_eta(
         mesh_resolution_x=mesh_resolution,
         mesh_resolution_y=mesh_resolution,
         xlabel=xlabel,
-        ylabel=r'$\eta_{12}\equiv n_{12} \Delta t$',
+        ylabel=r'$\eta_{12}$',
         title=title,
         x_range=eta_range,
         y_range=eta12_range,
@@ -481,8 +481,8 @@ def contour_plot_localized_eta12_v_eta1_eta2(
         Ms=Ms,
         mesh_resolution_x=mesh_resolution,
         mesh_resolution_y=mesh_resolution,
-        xlabel=r'$\eta_1 \equiv n_1\Delta t = \eta_2 \equiv n_2 \Delta t$',
-        ylabel=r'$\eta_{12}\equiv n_{12} \Delta t$',
+        xlabel=r'$\eta_1 = \eta_2$',
+        ylabel=r'$\eta_{12}$',
         title=f'D1={D1:.2f},\nD2={D2:.2f}, dt={dt}, L0={L0:.2f}',
         x_range=eta1_range,
         y_range=eta12_range,
@@ -529,7 +529,7 @@ def contour_plot_localized_eta12_v_gamma(
         args_dict.update({'n12': y / dt})
 
     xlabel = r'$\gamma \equiv D_1/D_2$'
-    ylabel = r'$\eta_{12}\equiv n_{12} \Delta t$'
+    ylabel = r'$\eta_{12}$'
     title = f'n1={n1:.2f}, n2={n2:.2f}, D2={D2:.2f},\ndt={dt}, L0={L0:.2f}'
 
     calculate_and_plot_contour_plot(
@@ -615,7 +615,7 @@ def contour_plot_localized_eta12_v_eta_ratio(
         mesh_resolution_x=mesh_resolution,
         mesh_resolution_y=mesh_resolution,
         xlabel=r'$\eta_1 / \eta_2 \equiv n_1 / n_2$',
-        ylabel=r'$\eta_{12}\equiv n_{12} \Delta t$',
+        ylabel=r'$\eta_{12}$',
         title=f'D1={D1:.2f}, n2={n2:.2f},\nD2={D2:.2f}, dt={dt}, L0={L0:.2f}',
         x_range=eta_ratio_range,
         y_range=eta12_range,
@@ -637,7 +637,7 @@ def contour_plot_localized_gamma_v_eta(
         angle=0,
         var='eta1'
 ):
-    n12 = eta_default / dt
+    n12 = eta12_default / dt
     recalculate_BF = False
     model = 'localized_different_D_detect_angle'
     args_dict = {'D2': D2,
@@ -712,7 +712,7 @@ def contour_plot_localized_gamma_v_eta1_eta2(
         dt=0.05,
         angle=0,
 ):
-    n12 = eta_default / dt
+    n12 = eta12_default / dt
     recalculate_BF = False
     model = 'localized_different_D_detect_angle'
 
@@ -864,7 +864,7 @@ def contour_plot_localized_eta12_v_M(
         Ms=(1000,),
         mesh_resolution_y=mesh_resolution,
         xlabel=r'$M$',
-        ylabel=r'$\eta_{12}\equiv n_{12} \Delta t$',
+        ylabel=r'$\eta_{12}$',
         title=f'D1={D1:.2f}, D2={D2:.2f},\nn1={n1:.2f}, n2={n2:.2f}, dt={dt}, L0={L0:.2f}',
         x_range=M_range,
         y_range=eta12_range,
@@ -1863,7 +1863,7 @@ def contour_plot_free_dumbbell_same_D(trials=3, verbose=False,
         Ms=Ms,
         mesh_resolution_x=mesh_resolution,
         mesh_resolution_y=mesh_resolution,
-        xlabel=r'$\eta\equiv n_{12}\Delta t$',
+        xlabel=r'$\eta_{12}$',
         ylabel=r'$\ell_0\equiv L_0/\sqrt{4D\Delta t}$',
         title=f'D1={D1:.2f},\nD2={D2:.2f}, dt={dt}',
         x_range=eta_range,

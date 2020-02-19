@@ -170,18 +170,18 @@ def test_hessian_calculation():
     # # print('Man hess info: ', info)
 
 
-def test_get_MLE():
-    np.random.seed(0)
-
-    test_traj = Trajectory.from_parameter_dictionary(
-        {'D1': 0.004, 'D2': 0.4, 'n1': 1.0, 'n2': 1.0, 'n12': 0.02, 'M': 100, 'dt': 0.05,
-         'L0': 20.0, 'model': 'localized_different_D_detect_angle', 'angle': 0.0, 'trial': 18,
-         'recalculate': True}
-    )
-    print('\nLg Bayes factor for link: ', test_traj.lgB)
-    assert test_traj.lgB == pytest.approx(-7.57388, ABS_TOL)
-
-    np.random.seed()
+# def test_get_MLE():
+#     np.random.seed(0)
+#
+#     test_traj = Trajectory.from_parameter_dictionary(
+#         {'D1': 0.004, 'D2': 0.4, 'n1': 1.0, 'n2': 1.0, 'n12': 0.02, 'M': 100, 'dt': 0.05,
+#          'L0': 20.0, 'model': 'localized_different_D_detect_angle', 'angle': 0.0, 'trial': 18,
+#          'recalculate': True}
+#     )
+#     print('\nLg Bayes factor for link: ', test_traj.lgB)
+#     assert test_traj.lgB == pytest.approx(-7.57388, ABS_TOL)
+#
+#     np.random.seed()
 
 #
 #

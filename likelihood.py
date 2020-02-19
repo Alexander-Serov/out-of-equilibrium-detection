@@ -42,6 +42,7 @@ from colorama import Fore, Back, Style
 import os
 import dill
 import pickle
+import hashlib
 
 colorama.init()
 
@@ -52,9 +53,15 @@ SAME_MINIMA_STOP_CRITERION = 4  # How many similar minima should be found for th
 MINIMA_CLOSE_ATOL = 0.1
 
 # Prior parameters
-max_expected_D = 5
-max_expected_n = 100
-max_expected_n12 = 1000
+# max_expected_n = 100
+# max_expected_n12 = 1000
+
+prior_version = 2
+max_expected_eta = 10
+max_expected_eta12 = 100
+max_expected_D = 10
+alpha_mu = 0
+alpha_sigma = np.pi / 4
 max_expected_L0 = 10  # unused?
 
 
@@ -1069,17 +1076,17 @@ def get_mean(k=1, D1=1, D2=3, n1=1, n2=1, n12=1, M=999, dt=0.3, alpha=0):
     """Get the mean of the stochastic variable corresponding to given springs, diffusivities and frequency"""
 
 
-def get_ln_prior_func(rotation=True):
+def get_ln_prior_func(dt, rotation=True):
     # (D1, n1, D2=None, n2=None, n12=None):
     """
     Prior for the corresponding likelihoods.
 
     Also provide a sampler to sample from the prior.
     """
-    ################# Diffusivities D1, D2 #################
-
     tau = 1e-2
     k = 2
+
+    ################# Diffusivities D1, D2 #################
 
     def eqn(z):
         # Condition: decrease on the right border as compared to mode is tau
@@ -1109,16 +1116,13 @@ def get_ln_prior_func(rotation=True):
     ################# Localization strength n1, n2 #################
     # Gamma distribution. Set scale by right boundary
 
-    tau = 1e-2
-    k = 2
-
     def eqn(z):
         # Condition: decrease on the right border as compared to mode is tau
         return z * exp(1 - z) - tau
 
     sol = root_scalar(eqn, bracket=[1, 1e5])
     z = sol.root
-    theta_n = max_expected_n / z
+    theta_n = max_expected_eta / dt / z
 
     # print('theta_n', theta)
     # raise RuntimeError('stop')
@@ -1144,17 +1148,13 @@ def get_ln_prior_func(rotation=True):
             return 0
 
     ################# Link strength n12 #################
-
-    tau = 1e-2
-    k = 2
-
     def eqn(z):
         # Condition: decrease on the right border as compared to mode is tau
         return z * exp(1 - z) - tau
 
     sol = root_scalar(eqn, bracket=[1, 1e5])
     z = sol.root
-    theta_n12 = max_expected_n12 / z
+    theta_n12 = max_expected_eta12 / dt / z
 
     # if tau == 1 / 100:
     #     a = 7.638352067993813
@@ -1184,19 +1184,14 @@ def get_ln_prior_func(rotation=True):
         # return 1 - (1 + n / lam)**(-a)
 
     ################# Interaction angle alpha #################
-    mu = 0
-    sigma = np.pi / 4
-
     def ln_alpha_prior(alpha):
-        return -1 / 2 * np.log(2 * np.pi * sigma ** 2) - (alpha - mu) ** 2 / 2 / sigma ** 2
+        return -1 / 2 * np.log(2 * np.pi * alpha_sigma ** 2) - (
+                    alpha - alpha_mu) ** 2 / 2 / alpha_sigma ** 2
 
     def cdf_alpha_prior(alpha):
-        return 1 / 2 * (1 + erf((alpha - mu) / sigma / np.sqrt(2)))
+        return 1 / 2 * (1 + erf((alpha - alpha_mu) / alpha_sigma / np.sqrt(2)))
 
     ################# Link length L0 #################
-
-    tau = 1e-2
-    k = 2
 
     def eqn(z):
         # Condition: decrease on the right border as compared to mode is tau
@@ -1299,7 +1294,14 @@ def get_ln_prior_func(rotation=True):
 
         return sample
 
-    return ln_prior, sample_from_the_prior
+    # Calculate prior hash to distinguish priors
+    prior_params = {'prior_version': prior_version, 'max_expected_eta': max_expected_eta,
+                    'max_expected_eta12': max_expected_eta12, 'max_expected_D': max_expected_D,
+                    'max_expected_L0': max_expected_L0, 'tau': tau, 'k': k, 'alpha_mu': alpha_mu,
+                    'alpha_sigma': alpha_sigma}
+    prior_hash = hashlib.md5(str(prior_params).encode('utf-8')).hexdigest()
+
+    return ln_prior, sample_from_the_prior, prior_hash
 
 
 def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, verbose= \
@@ -1514,8 +1516,6 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         if times_best_found >= SAME_MINIMA_STOP_CRITERION:
             break
 
-
-
         # retry(i, _min_x, fun)
 
     # Sort the results
@@ -1592,13 +1592,10 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
     # sys.exit(0)
     # if verbose:
     #     1
-        # print('Full results:\n', _min_x)
-        # print('det_inv_hess: ', det_inv_hess)
+    # print('Full results:\n', _min_x)
+    # print('det_inv_hess: ', det_inv_hess)
 
     return MLE, ln_model_evidence, _min_x, success
-
-
-
 
 
 def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=1, tol=1e-5):

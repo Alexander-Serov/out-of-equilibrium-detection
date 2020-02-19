@@ -1320,11 +1320,11 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
 
     d = len(names)
     tol = 1e-5  # search tolerance
-    options_BFGS = {'disp': verbose, 'gtol': tol}
+    # options_BFGS = {'disp': verbose, 'gtol': tol}
     fatol = 1e-2
     xatol = 1e-6
-    options_NM = {'disp': verbose, 'maxiter': d * 1000,
-                  'xatol': xatol, 'fatol': fatol, 'disp': False}
+    # options_NM = {'disp': verbose, 'maxiter': d * 1000,
+    #               'xatol': xatol, 'fatol': fatol, 'disp': False}
 
     bl_log_parameter_search = False
     np.random.seed()
@@ -1429,8 +1429,8 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         print('Found minimum ', fun, '\tat\t', to_dict(*_min_x))
 
         # print(np.array(_min_x.x).squeeze())
-        grad = nd.Gradient(minimize_me)(_min_x)
-        grad_norm = np.max(abs(grad))
+        # grad = nd.Gradient(minimize_me, order=12)(_min_x)
+        # grad_norm = np.max(abs(grad))
         # print('\nGradient in the minimum:\t', grad, '\tMax. norm:\t', grad_norm)
         # print('\nManual Jacobian:\t', grad)
         # print('Calculated Jacobian:\t', _min_x.jac, '\n')
@@ -1438,15 +1438,15 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
 
         # Store the found point if the hessian is not diagonal (because it's not a new point then)
         # if np.abs(np.linalg.det(_min_x.hess_inv)) >= 1e-8:
-        GRAD_NORM_TOL = 1
-        if grad_norm < GRAD_NORM_TOL:
-            pass
-            # ln_evidence = calculate_laplace_approximation(_min_x)
-
-        else:
-            print(f'Warning! Gradient too large (norm = {grad_norm}). Check your prior! \nThe '
-                  f'current result will be ignored')
-            ln_evidence = np.nan
+        # GRAD_NORM_TOL = 1
+        # if grad_norm < GRAD_NORM_TOL:
+        #     pass
+        #     # ln_evidence = calculate_laplace_approximation(_min_x)
+        #
+        # else:
+        #     print(f'Warning! Gradient too large (norm = {grad_norm}). Check your prior! \nThe '
+        #           f'current result will be ignored')
+        #     success = False
 
         if success:
             element = (fun, _min_x, success)
@@ -1503,13 +1503,18 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         diffs = np.array([np.abs(fun_vals[i] - fun_vals[0]) for i in range(1, len(fun_vals))])
         # add 1 to count the value itself
         times_best_found = np.sum(diffs < MINIMA_CLOSE_ATOL) + 1
-        print(
-            f'Best minimum so far: {fun_vals[0]}\n' +
-            Fore.GREEN + f'(Number of best minima so far) / (stop criterion):'
-            f' {times_best_found} /'
-            f' {SAME_MINIMA_STOP_CRITERION}' + Style.RESET_ALL)
+        if fun_vals:
+            print(
+                f'Best minimum so far: {fun_vals[0]}\n' +
+                Fore.GREEN + f'(Number of best minima so far) / (stop criterion):'
+                f' {times_best_found} /'
+                f' {SAME_MINIMA_STOP_CRITERION}' + Style.RESET_ALL)
+        else:
+            print('No valid minima found so far.')
         if times_best_found >= SAME_MINIMA_STOP_CRITERION:
             break
+
+
 
         # retry(i, _min_x, fun)
 
@@ -1554,19 +1559,11 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
                 warnings.warn('We may be recalculating the same Hessian. The code will work, '
                               'but optimization is necessary')
 
-    # Compare with true minimum if calculated and take the largest.
-    # This is because the Laplace approximation always provides a lower-bound estimate
-    # if np.isnan(ln_true_evidence):
-    #     ln_model_evidence = ln_laplace_evidence
-    # elif np.isnan(ln_laplace_evidence):
-    #     ln_model_evidence = ln_true_evidence
-    # else:
+    # Calculate evidence for the best minimum
+    # sys.exit(0)
+
     ln_model_evidence = np.nanmax([ln_evidence, ln_true_evidence])  # todo: deprecated
     success = not np.isnan(ln_model_evidence)
-    # if success:
-    #     print('Rerunning BFGS on the best _min_x:\n',
-    #           minimize(fnc, _min_x.x, tol=1e-5, method='BFGS',
-    #                    options=options_BFGS))
 
     # Restore the parameters from log
     if bl_log_parameter_search:
@@ -1592,245 +1589,16 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         print(
             f'MLE search procedure with link={link} failed to converge in {tries} tries.')
 
-    # sys.exit(0)
-    if verbose:
-        1
+    sys.exit(0)
+    # if verbose:
+    #     1
         # print('Full results:\n', _min_x)
         # print('det_inv_hess: ', det_inv_hess)
 
     return MLE, ln_model_evidence, _min_x, success
 
 
-# def pymc_MLE(ks,
-#              M,
-#              dt,
-#              dRks,
-#              rotation=True,
-#              same_D=False,
-#              both=False,
-#              ln_posterior=None,
-#              names=None,
-#              sample_from_the_prior=None,
-#              hash_no_trial=None,
-#              link=True,
-#              method='BFGS',
-#              verbose=False,
-#              log_lklh=None,
-#              ):
-#     # if not same_D:
-#     #     def ln_lklh(D1, D2, n1, n2, n12, alpha):
-#     #         ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
-#     #             dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D2, n1=n1, n2=n2, n12=n12, M=M,
-#     #             dt=dt, alpha=alpha, rotation=rotation, both=both, link=True) for i in range(len(
-#     #             ks))]
-#     #         ln_lklh_val = np.sum(ln_lklh_vals)
-#     #         return ln_lklh_val
-#     # else:
-#     #     def ln_lklh(D1, n1, n2, n12, alpha):
-#     #         ln_lklh_vals = [new_likelihood_2_particles_x_link_one_point(
-#     #             dRk=dRks[:, i, np.newaxis], k=ks[i], D1=D1, D2=D1, n1=n1, n2=n2, n12=n12, M=M,
-#     #             dt=dt, alpha=alpha, rotation=rotation, both=both, link=True) for i in
-#     #             range(len(ks))]
-#     #         ln_lklh_val = np.sum(ln_lklh_vals)
-#     #         return ln_lklh_val
-#     # return ln_lklh
-#     # print(ks)
-#     # print(dRks)
-#
-#     # %%% Parameters of the prior
-#     ################# Diffusivities D1, D2 #################
-#
-#     def get_theta(tau, max_expected):
-#         # Condition: decrease on the right border as compared to mode is tau
-#         # Assuming gamma distribution
-#         sol = root_scalar(lambda z: z * exp(1 - z) - tau, bracket=[1, 1e5])
-#         z = sol.root
-#         theta = max_expected / z
-#         return theta
-#
-#     tau_D = 1e-2
-#     k_D = 2
-#     tau_n = 1e-2
-#     k_n = 2
-#     tau_n12 = 1e-2
-#     k_n12 = 2
-#     mu_alpha = 0
-#     sigma_alpha = np.pi / 4
-#
-#     ### Try a search based on PyMC
-#     def to_1D(x):
-#         return np.vstack([np.real(x), np.imag(x)])
-#
-#     if link:
-#         # print(log_lklh)
-#         with pm.Model() as model:
-#             # Priors
-#             D1 = pm.Gamma('D1', alpha=k_D, beta=1 / get_theta(tau_D, max_expected_D))
-#             D2 = pm.Gamma('D2', alpha=k_D, beta=1 / get_theta(tau_D, max_expected_D))
-#             n1 = pm.Gamma('n1', alpha=k_n, beta=1 / get_theta(tau_n, max_expected_n))
-#             n2 = pm.Gamma('n2', alpha=k_n, beta=1 / get_theta(tau_n, max_expected_n))
-#             n12 = pm.Gamma('n12', alpha=k_n12, beta=1 / get_theta(tau_n12, max_expected_n12))
-#             alpha = pm.Normal('alpha', mu=mu_alpha, sigma=sigma_alpha)
-#
-#             for ind in range(2):  # len(ks)):
-#
-#                 k = ks[ind]
-#                 dRk = dRks[:, ind, np.newaxis]
-#
-#                 # def log_lklh(n1, n2, n12, D1, D2, alpha):
-#                 # ck = exp(-2 * pi * 1j * k / M)
-#                 Re_ck = np.cos(-2 * pi * k / M)
-#                 Im_ck = np.sin(-2 * pi * k / M)
-#                 # if link:
-#
-#                 g = pm.math.sqrt((n1 - n2) ** 2 + 4 * n12 ** 2)
-#
-#                 # print(model)
-#                 # print(model.basic_RVs)
-#
-#                 lambdas = tt.stack([-2 * n1, -2 * n2,
-#                                     -g - n1 - 2 * n12 - n2, g - n1 - 2 * n12 - n2]) / 2
-#                 U = tt.stacklists([
-#                     [0, 0, -2 * n12, 2 * n12],
-#                     [2 * g, 0, 0, 0],
-#                     [0, 0, g - n1 + n2, g + n1 - n2],
-#                     [0, 2 * g, 0, 0]]) / 2 / g
-#
-#                 Um1 = tt.stacklists([
-#                     [0, 2 * n12, 0, 0],
-#                     [0, 0, 0, 2 * n12],
-#                     [-g - n1 + n2, 0, 2 * n12, 0],
-#                     [g - n1 + n2, 0, 2 * n12, 0]]) / 2 / n12
-#
-#                 def cj(j):
-#                     return tt.exp(lambdas[j - 1] * dt)
-#
-#                 def s_abs_2(i):
-#                     r = (cj(i) - Re_ck) ** 2 + Im_ck ** 2
-#                     return 1 / r
-#
-#                 def Re_Q(i, j):
-#                     """
-#                     Manually calculate the Real and Imaginary parts of Q because theano does not
-#                     work with complex numbers
-#                     """
-#                     r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] + lambdas[j - 1])
-#                     r *= s_abs_2(i) * s_abs_2(j)
-#                     r *= 1 + cj(i) * cj(j) - cj(i) * Re_ck - cj(j) * Re_ck
-#
-#                     return r
-#
-#                 def Im_Q(i, j):
-#                     """
-#                     Manually calculate the Real and Imaginary parts of Q because theano does not
-#                     work with complex numbers
-#                     """
-#                     r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] + lambdas[j - 1])
-#                     r *= s_abs_2(i) * s_abs_2(j)
-#                     r *= 1 + cj(i) * cj(j) + cj(i) * Im_ck - cj(j) * Im_ck
-#
-#                     return r
-#
-#                 # Gamma covariance matrix
-#                 def G1(real):
-#                     Q = Re_Q if real else Im_Q
-#
-#                     G1 = tt.stacklists([
-#                         [2 * D1 * Q(1, 1), 0, 0, 0],
-#                         [0, 2 * D2 * Q(2, 2), 0, 0],
-#                         [0, 0, (D1 * (g + n1 - n2) + D2 * (g - n1 + n2)) *
-#                          Q(3, 3) / g, -(D1 - D2) * (g + n1 - n2) * Q(3, 4) / g],
-#                         [0, 0, -(D1 - D2) * (g - n1 + n2) * Q(4, 3) / g,
-#                          (D1 * (g - n1 + n2) + D2 * (g + n1 - n2)) * Q(4, 4) / g]])
-#                     return G1
-#
-#                 def Gfull(real):
-#                     G = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * U.dot(G1(real)).dot(Um1)
-#                     if not both:
-#                         return G[:2, :2]
-#                     else:
-#                         return G
-#
-#                 def Cfull(real):
-#                     C = Gfull(real) * np.float(k != 0)
-#                     if not both:
-#                         return C[:2, :2]
-#                     else:
-#                         return C
-#
-#                 #
-#                 # # # else:
-#                 # # #     # g = np.sqrt((n1 - n2)**2 + 2 * n12**2)
-#                 # # #     lambdas = np.array([-n1, -n1, -n2, -n2])
-#                 # # #
-#                 # # #     def cj(j):
-#                 # # #         return exp(lambdas[j - 1] * dt)
-#                 # # #
-#                 # # #     def Q(i, j):
-#                 # # #         r = M * (cj(i) * cj(j) - 1) / (lambdas[i - 1] +
-#                 # # #                                        lambdas[j - 1]) / (cj(j) - ck) / (cj(i) - 1 / ck)
-#                 # # #         return r if i != j else r.real
-#                 # # #
-#                 # # #     # %% Get Gamma covariance matrix
-#                 # # #     G1 = np.array([
-#                 # # #         [2 * D1 * Q(1, 1), 0, 0, 0],
-#                 # # #         [0, 2 * D1 * Q(2, 2), 0, 0],
-#                 # # #         [0, 0, 2 * D2 * Q(3, 3), 0],
-#                 # # #         [0, 0, 0, 2 * D2 * Q(4, 4)]])
-#                 # # #     Gfull = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * G1
-#                 # # #
-#                 # # # # if k == 1:
-#                 # # # #     print(f'Q11(k=1) = {Q(1,1)}')
-#                 # #
-#                 # Cfull = np.zeros((4, 4)) if k > 0 else Gfull
-#                 #
-#                 # if not both:
-#                 #     G = Gfull[:2, :2]
-#                 #     C = Cfull[:2, :2]
-#                 # else:
-#                 #     G, C = Gfull, Cfull
-#
-#                 # If inferring the angle, rotate the G matrix
-#                 if rotation:
-#                     S = tt.stacklists([[tt.cos(alpha), -tt.sin(alpha)],
-#                                        [tt.sin(alpha), tt.cos(alpha)]])
-#                     if both:
-#                         Z = tt.zeros((2, 2))
-#                         S = tt.stacklists([[S, Z], [Z, S]])
-#                 else:
-#                     S = tt.ones((4, 4))
-#
-#                 def G(real):
-#                     return S.dot(Gfull(real)).dot(S.T)
-#
-#                 def C(real):
-#                     return S.dot(Cfull(real)).dot(S.T)
-#
-#                 Vxx = (G(1) + C(1)) / 2
-#                 Vxy = (-G(0) + C(0)) / 2
-#                 Vyx = (G(0) + C(0)) / 2
-#                 Vyy = (G(1) - C(1)) / 2
-#                 # print(tt.ones_like(Vxx[0]))
-#
-#                 full_cov_real = tt.concatenate([
-#                     tt.concatenate([Vxx, Vxy], axis=1),
-#                     tt.concatenate([Vyx, Vyy], axis=1)],
-#                     axis=0)
-#
-#                 shape = 8 if both else 4
-#                 mu = np.zeros(shape=shape)
-#
-#                 pm.MvNormal('k' + str(k), mu=mu, cov=full_cov_real, observed=to_1D(dRk))
-#
-#             print('Start sampling')
-#             with stopwatch('Traces: '):
-#                 traces = pm.sample(10)
-#             print('Results: ', traces)
-#
-#             print('Starting MAP calculation')
-#             with stopwatch('MAP'):
-#                 map = pm.find_MAP(model=model, progressbar=True)
-#             print('MAP: ', map)
+
 
 
 def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=1, tol=1e-5):
@@ -1843,6 +1611,7 @@ def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=1, tol=1e-5)
     # verbose = 2  # todo
     VRBS_LVL_ALL = 2
     VRBS_LVL_MINIMUM = 1
+    GRAD_NORM_TOL = 1e-2
     hessian_tries = 3
     name = 'Hessian calculation' if need_hessian else 'MAP calculation'
 
@@ -1899,7 +1668,7 @@ def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=1, tol=1e-5)
     with stopwatch(name):
         with stopwatch('Minimum search (initial)'):
             _min = minimize(minimize_me, x0, method='BFGS', options=options_BFGS)
-        print(f'Approximate MAP found: {_min.fun}')
+        print(f'Approximate minimum value found: {_min.fun}')
         hess_diag = nd.Hessdiag(minimize_me, step=1e-2, order=12)(_min.x)
         if verbose >= VRBS_LVL_ALL:
             print('NM search 1:\n', _min)
@@ -1922,6 +1691,18 @@ def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=1, tol=1e-5)
             # Retry with higher precision
             _min, rescaled_minimize_me = find_MAP_rescaled(shift, scales)
             map = _min.x * scales + shift
+
+            # Check the gradient is small
+            # grad_or = nd.Gradient(minimize_me, step = 1e-2, order = 12)(shift)
+            grad = nd.Gradient(rescaled_minimize_me, step=1e-2, order=12)(_min.x)
+            grad_norm = np.linalg.norm(grad, ord=np.inf)
+
+            # print('Orig. grad norm:', np.linalg.norm(grad_or, ord = np.inf), grad_or)
+            # print('Grad norm:', np.linalg.norm(grad, ord = np.inf), grad)
+
+            if grad_norm > GRAD_NORM_TOL:
+                raise ValueError(f'Gradient in the minimum above the permitted limit.\nGradident '
+                                 f'norm:\t{grad_norm:.2f}, gradient:\t{grad}')
 
             if not need_hessian:
                 det_inv_hess = np.nan

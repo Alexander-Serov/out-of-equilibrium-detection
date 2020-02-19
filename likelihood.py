@@ -1589,7 +1589,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         print(
             f'MLE search procedure with link={link} failed to converge in {tries} tries.')
 
-    sys.exit(0)
+    # sys.exit(0)
     # if verbose:
     #     1
         # print('Full results:\n', _min_x)

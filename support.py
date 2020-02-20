@@ -80,24 +80,21 @@ def get_cluster_args_string(D1, D2, n1, n2, n12, dt, L0, M, model, trial=0,
     return args_string
 
 
-def _hash_me(*args):
+def _hash_me(str):
     """
-    Calculate a hash of the parameters to use as a unique key for saving or loading data.
-
-    Only accepts single-value parameters. Does not accept arrays or lists
     For external use, call hash_from_dictionary()
     """
-    hash_str = ''
-    for i, arg in enumerate(args):
-        # print(i, arg)
-        if i > 0:
-            hash_str += '_'
-        if isinstance(arg, str):
-            hash_str += arg
-        else:
-            hash_str += f'{arg:g}'
+    # hash_str = ''
+    # for i, arg in enumerate(args):
+    #     # print(i, arg)
+    #     if i > 0:
+    #         hash_str += '_'
+    #     if isinstance(arg, str):
+    #         hash_str += arg
+    #     else:
+    #         hash_str += f'{arg:g}'
 
-    hash = hashlib.md5(hash_str.encode('utf-8'))
+    hash = hashlib.md5(str.encode('utf-8'))
     return hash.hexdigest()
 
 
@@ -105,22 +102,15 @@ def hash_from_dictionary(parameters, dim=2, use_model=False):
     """
     Keeping `use_model` for compatibility with old calculated data. Remove when not necessary.
     """
-    if use_model:
-        args = [parameters[key] for key in 'D1 D2 n1 n2 n12 M dt L0 angle model'.split()]
-    else:
-        args = [parameters[key] for key in 'D1 D2 n1 n2 n12 M dt L0 angle'.split()]
-    args_no_trial = args.copy()
+    args_dict = parameters.copy()
+    args_dict['dim'] = dim
+    if not use_model:
+        args_dict.pop('model', None)
 
-    # Allow to have multiple hashes for the same parameters
-    if 'trial' in parameters.keys():
-        trial = parameters['trial']
-    else:
-        trial = 0
-    args.append(trial)
-    args_no_trial.append(0)
+    args_dict_no_trial = args_dict.copy()
+    args_dict_no_trial['trial'] = 0
 
-    str = f'{dim:d}D'
-    return _hash_me(str, *args), _hash_me(str, *args_no_trial)
+    return _hash_me(str(args_dict)), _hash_me(str(args_dict_no_trial))
 
 
 def load_data(hash):

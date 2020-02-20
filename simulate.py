@@ -75,7 +75,7 @@ def simulate_2_confined_particles_with_fixed_angle_bond(parameters, plot=False,
         dict_data, loaded = load_data(hash)
         # print('sim', dict_data, loaded)
         # return
-        if loaded:
+        if loaded and np.all([key in dict_data.keys() for key in 't R dR'.split()]):
             t, R, dR = [dict_data[key] for key in 't R dR'.split()]
 
             # Plot

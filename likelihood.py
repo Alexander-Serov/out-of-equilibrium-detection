@@ -57,7 +57,7 @@ MINIMA_CLOSE_ATOL = 0.1
 # max_expected_n12 = 1000
 
 prior_version = 2
-max_expected_eta = 10
+max_expected_eta = 100
 max_expected_eta12 = 100
 max_expected_D = 10
 alpha_mu = 0
@@ -1395,9 +1395,16 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
 
         # _min_x = minimize(fnc, start_point_vals, tol=1e-5, method=method,
         #                options=options)
+        # try:
         _min_x, fun, _, ln_evidence, success = get_MAP_and_hessian(minimize_me,
                                                                    start_point_vals,
                                                                    need_hessian=False)
+        # except:
+        #     _min_x =
+        #     fun = np.nan
+        #     ln_evidence = np.nan
+        #     success = False
+
         # need_hessian=True, verbose = 2)
         #
         # # Save function for analysis
@@ -1409,7 +1416,7 @@ def get_MLE(ln_posterior, names, sample_from_the_prior, hash_no_trial, link, ver
         #     logging.warning("Enoucntered unhandled exception while saving a data file: ", e)
 
         # Check if alpha angle is within [-pi/2; pi/2]
-        if 'alpha' in names:
+        if 'alpha' in names and success:
             def shift_angle(alpha):
                 n = np.floor(abs(alpha) / np.pi + 0.5)
                 return alpha - np.sign(alpha) * n * np.pi, n != 0
@@ -1698,8 +1705,11 @@ def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=1, tol=1e-5)
             # print('Grad norm:', np.linalg.norm(grad, ord = np.inf), grad)
 
             if grad_norm > GRAD_NORM_TOL:
-                raise ValueError(f'Gradient in the minimum above the permitted limit.\nGradident '
-                                 f'norm:\t{grad_norm:.2f}, gradient:\t{grad}')
+                warnings.warn(f'Gradient in the minimum above the permitted '
+                                     f'limit.\nGradident '
+                                 f'norm:\t{grad_norm:.2f}, gradient:\t{grad}. Aborting search')
+                map *= np.nan
+                return map, np.nan, np.nan, np.nan, False
 
             if not need_hessian:
                 det_inv_hess = np.nan

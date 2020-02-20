@@ -519,9 +519,9 @@ if __name__ == '__main__':
     # )
 
     test_traj = Trajectory.from_parameter_dictionary(
-        {'D1': 0.004, 'D2': 0.4, 'n1': 1.0, 'n2': 1.0, 'n12': 30.0, 'M': 7, 'dt': 0.05,
-         'L0': 20.0, 'model': 'localized_different_D_detect_angle', 'angle': 0.0, 'trial': 4,
-         'recalculate_BF': 1, 'verbose': 2}
+        {'D1': 10.0, 'D2': 0.1, 'n1': 1.0, 'n2': 1.0, 'n12': 0.0843393, 'M': 10, 'dt': 0.05,
+         'L0': 20.0, 'model': 'localized_different_D_detect_angle', 'angle': 0.0, 'trial': 12,
+         'recalculate_BF': 0, 'verbose': 1}
     )
 
     # print(test_traj.dR.shape)

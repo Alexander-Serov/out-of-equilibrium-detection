@@ -274,7 +274,8 @@ def calculate_and_plot_contour_plot(
     if not np.isnan(avg_time):
         print(f'On average, it took {avg_time / 60:.1f} min to calculate each of the {count:d} '
               f'recorded points.')
-        print(f'Calculation of the whole plot takes {around}{sum_hours:.1f} hours of CPU time.')
+        print(f'Calculation of the whole plot takes {around}{sum_hours:.1f} hours of CPU time or '
+              f'{around}{sum_hours/2000:.1f} hours on 2000 CPUs.')
     print(f'{cluster_counter} calculations scheduled for the cluster')
 
     if trials > 1:

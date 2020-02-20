@@ -8,6 +8,7 @@ NEWER_THAN="2019-10-29 00:00:00" # default start date
 SERVER_PATH=./out-of-equilibrium-detection/job-manager/data/
 LOCAL_PATH=/mnt/d/calculated_data/out-of-equilibrium_detection/
 EXTENSION="*.pyc"
+NUM_FILES=0
 
 # Save current date & time for further re-use
 ssh aserov@tars.pasteur.fr touch start_date2
@@ -53,7 +54,10 @@ else
 fi
 
 # Replace old-date file with a new one
-ssh aserov@tars.pasteur.fr mv -f start_date2 start_date
+if [ $NUM_FILES -gt 0 ];
+then
+    ssh aserov@tars.pasteur.fr mv -f start_date2 start_date
+fi
 
 
 

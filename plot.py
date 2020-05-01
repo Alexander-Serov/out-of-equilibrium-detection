@@ -29,6 +29,7 @@ lw_theory = 1
 fig_folder = 'figures'
 arguments_file = 'arguments.dat'
 mesh_resolution = 2 ** 3 + 1
+png = False
 
 # Default values
 eta_default = 0.05
@@ -37,7 +38,7 @@ gamma_default = 5
 M_default = 1000
 dt = 0.05  # s
 D2 = 0.1  # um^2/s
-L0 = 20
+L0 = 20     # um
 
 
 def plot_1d(xs, ys, CIs,
@@ -177,7 +178,8 @@ def contour_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
         try:
             plt.tight_layout()
             figpath = os.path.join(fig_folder, figname)
-            plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
+            if png:
+                plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
             plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
         except AttributeError as e:
             logging.warning('Unable to save figure.\n')  # str(e))
@@ -252,7 +254,8 @@ def calculate_and_plot_contour_plot(
                         full_time[ind_M, ind_x, ind_y, trial] = np.sum(list(times.values()))
 
                         if cluster and not loaded:
-                            file.write(get_cluster_args_string(**args_dict))
+                            # file.write(get_cluster_args_string(**args_dict))
+                            file.write(str(args_dict)+'\n')
                             cluster_counter += 1
 
     if cluster and verbose:
@@ -300,8 +303,8 @@ def calculate_and_plot_contour_plot(
         lgB_levels = [-1, 0, 1]
 
         # LgB values
-        clims = np.array([-1, 1]) * np.ceil(np.abs(np.nanmax(median_lg_BFs)))
-        if np.all(np.isnan(clims)):
+        clims = np.array([-1, 1]) * np.ceil(np.nanmax(np.abs(median_lg_BFs)))
+        if not np.all(np.isfinite(clims)):
             levels = None
         else:
             levels = np.arange(clims[0], clims[1] + 1, 1)
@@ -324,7 +327,7 @@ def calculate_and_plot_contour_plot(
                      )
 
         # Confidence intervals
-        if np.all(np.isnan([min_CI_width, max_CI_width])):
+        if not np.all(np.isfinite([min_CI_width, max_CI_width])):
             levels = None
         else:
             levels = np.arange(min_CI_width, max_CI_width + 1, 1)

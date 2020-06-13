@@ -1,10 +1,12 @@
 """
 Contains all plot functions
 """
-
+import copy
 import os
 import time
+import warnings
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy import log10
@@ -18,6 +20,7 @@ from simulate import simulate_2_confined_particles_with_fixed_angle_bond
 from support import get_cluster_args_string, set_figure_size, delete_data
 from stopwatch import stopwatch
 import logging
+import seaborn as sns
 
 # Plot parameters
 alpha_shade = 0.25
@@ -38,7 +41,20 @@ gamma_default = 5
 M_default = 1000
 dt = 0.05  # s
 D2 = 0.1  # um^2/s
-L0 = 20     # um
+L0 = 20  # um
+
+# Color values and confidence levels for the 5-color matrix
+CONFIDENCE_LEVEL_LG_B = 1
+NO_LINK_MODEL = 1
+ENERGY_TRANSFER_MODEL = 2
+SAME_DIFFUSIVITY_MODEL = 3
+LINK_ENERGY_TRANSFER_UNCERTAIN_MODEL = 4
+color_dict = {0: 'Inconcl',
+              NO_LINK_MODEL: 'No link',
+              ENERGY_TRANSFER_MODEL: 'En tr',
+              SAME_DIFFUSIVITY_MODEL: 'Same D',
+              LINK_ENERGY_TRANSFER_UNCERTAIN_MODEL: 'Link'
+              }
 
 
 def plot_1d(xs, ys, CIs,
@@ -185,6 +201,53 @@ def contour_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
             logging.warning('Unable to save figure.\n')  # str(e))
 
     plt.show()
+
+
+def multi_model_comparison_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
+                                levels=None, cb_label=None, xscale='log', yscale='log',
+                                xlabel=None, ylabel=None, lgB_levels=None,
+                                title=None,
+                                figname=None,
+                                clear=True,
+                                cmap='bwr',
+                                underlying_mask=None,
+                                clip=None,
+                                colorbar: bool = True,
+                                colorbar_ticks=None, ):
+    cmap_name = 'Set2'
+    cmap_len = 5
+
+    # Define colorbar formatter
+    labels = list(color_dict.values())
+    norm = matplotlib.colors.BoundaryNorm(np.arange(-0.5, 0.5 + cmap_len, 1), cmap_len)
+    fmt = matplotlib.ticker.FuncFormatter(lambda x, pos: labels[norm(x)])
+
+    fig, _ = set_figure_size(num=fig_num, rows=rows, page_width_frac=page_width_frac,
+                             height_factor=height_factor, clear=clear)
+
+    # fig, ax = plt.subplots()
+    ax = fig.gca()
+
+    # print('A1', X)
+    # print(Y)
+    # print(Z)
+
+    # Add continuous axes below
+    # Xs_plot, Ys_plot = np.meshgrid(X, Y)
+    im = ax.pcolormesh(X, Y, Z,
+                       cmap=plt.get_cmap(cmap_name, cmap_len),
+                       norm=norm,
+                       )
+    #                    antialiased=True)#, norm=norm)
+
+
+
+
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.colorbar(im, ax=ax, ticks=np.arange(0, cmap_len, 1), format=fmt)
 
 
 def calculate_and_plot_contour_plot(
@@ -358,6 +421,59 @@ def calculate_and_plot_contour_plot(
                          )
 
     return lg_BF_vals
+
+
+def get_five_color_matrix(median_lg_BFs: np.ndarray,
+                          median_lg_BFs_energy_transfer: np.ndarray) -> np.ndarray:
+    """Calculate a five-colored matrix, wherein each color corresponds to a
+    different model having more evidence than the others.
+
+    Returns
+    -------
+
+    Notes
+    -------
+    A color for a certain model is assigned if its evidence is higher than
+    evidence for the other 2 by at least the given significance level.
+
+    The first column of the first dimension of the input matrices must correspond
+    to the model with energy transfer, while the second colummn corresponds to
+    the same diffusivity model.
+
+    #todo Make sure I want to calculate it on the medians.
+
+    """
+
+    five_color_matrx = np.zeros_like(median_lg_BFs_energy_transfer, dtype=int)
+    # The no-link model is favored if evidence for it is stronger than for
+    # the other 2
+    five_color_matrx[(median_lg_BFs[0, :, :, :] <= -CONFIDENCE_LEVEL_LG_B) &
+                     (median_lg_BFs[1, :, :, :] <= -CONFIDENCE_LEVEL_LG_B)] \
+        = NO_LINK_MODEL
+
+    # Energy transfer model is significant and the difference from the same
+    # diffusivity model is significant
+    five_color_matrx[
+        (median_lg_BFs[0, :, :, :] >= CONFIDENCE_LEVEL_LG_B)
+        & (median_lg_BFs_energy_transfer >= CONFIDENCE_LEVEL_LG_B)
+        ] = ENERGY_TRANSFER_MODEL
+
+    # Same diffusivity model is significant and the difference from the energy
+    # transfer model is significant
+    five_color_matrx[
+        (median_lg_BFs[1, :, :, :] >= CONFIDENCE_LEVEL_LG_B)
+        & (median_lg_BFs_energy_transfer <= -CONFIDENCE_LEVEL_LG_B)
+        ] = SAME_DIFFUSIVITY_MODEL
+
+    # One of the link models is significant, but we were not able to decide
+    # which one presents more evidence.
+    five_color_matrx[
+        ((median_lg_BFs[1, :, :, :] >= CONFIDENCE_LEVEL_LG_B)
+         | (median_lg_BFs[0, :, :, :] >= CONFIDENCE_LEVEL_LG_B))
+        & (five_color_matrx == 0)
+        ] = LINK_ENERGY_TRANSFER_UNCERTAIN_MODEL
+
+    return five_color_matrx
 
 
 def contour_plot_localized_eta12_v_eta(
@@ -572,6 +688,95 @@ def contour_plot_localized_eta12_v_gamma(
         verbose=verbose,
         figname_base='localized_gamma_v_eta12',
     )
+
+
+def contour_plot_localized_eta12_v_gamma_energy_transfer_triple_test(
+        trials=3,
+        verbose=False,
+        recalculate_trajectory=False,
+        cluster=False,
+        Ms=(100,),
+        eta12_range=(1e-1, 1e1),
+        gamma_range=(1e-1, 1e1),
+        dt=0.05,
+        angle=0,
+        clip=10,
+        print_MLE=False,
+):
+    n1 = eta_default / dt
+    n2 = eta_default / dt
+    recalculate_BF = False
+    models = {'with_eng_transfer': 'localized_different_D_detect_angle',
+              'no_eng_transfer': 'localized_same_D_detect_angle'}
+
+    args_dict = {'n1': n1, 'n2': n2,
+                 'D2': D2,
+                 'dt': dt,
+                 'angle': angle, 'L0': L0,
+                 'verbose': verbose,
+                 'recalculate_trajectory': recalculate_trajectory,
+                 'recalculate_BF': recalculate_BF,
+                 'rotation': True,
+                 'cluster': cluster,
+                 }
+
+    def update_x(args_dict, x):
+        # x = gamma = D1/D2
+        D1 = D2 * x
+        args_dict.update({'D1': D1})
+
+    def update_y(args_dict, y):
+        # Y = eta12 = n12 * dt
+        args_dict.update({'n12': y / dt})
+
+    xlabel = r'$\gamma \equiv D_1/D_2$'
+    ylabel = r'$\eta_{12}$'
+    title = f'n1={n1:.2f}, n2={n2:.2f}, D2={D2:.2f},\ndt={dt}, L0={L0:.2f}'
+
+    lg_BF_vals = calculate_and_plot_contour_plot(
+        args_dict,
+        x_update_func=update_y,
+        y_update_func=update_x,
+        trials=trials,
+        Ms=Ms,
+        mesh_resolution_x=mesh_resolution,
+        mesh_resolution_y=mesh_resolution,
+        xlabel=ylabel,
+        ylabel=xlabel,
+        title=title,
+        x_range=eta12_range,
+        y_range=gamma_range,
+        cluster=cluster,
+        verbose=verbose,
+        figname_base='localized_gamma_v_eta12_energy_transfer',
+        models=models,
+        clip=clip,
+        print_MLE=print_MLE,
+        statistic='mean',
+    )
+
+    # Flip the same plot if everything is calculated
+    # (otherwise it creates duplicate calculation arguments)
+    if np.all(~np.isnan(lg_BF_vals)):
+        calculate_and_plot_contour_plot(
+            args_dict,
+            x_update_func=update_x,
+            y_update_func=update_y,
+            trials=trials,
+            Ms=Ms,
+            mesh_resolution_x=mesh_resolution,
+            mesh_resolution_y=mesh_resolution,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            title=title,
+            x_range=gamma_range,
+            y_range=eta12_range,
+            cluster=cluster,
+            verbose=verbose,
+            figname_base='localized_eta12_v_gamma_energy_transfer',
+            models=models,
+            clip=clip,
+        )
 
 
 def contour_plot_localized_eta12_v_eta_ratio(

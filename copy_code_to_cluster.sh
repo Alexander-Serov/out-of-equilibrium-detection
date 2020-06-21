@@ -1,21 +1,30 @@
 #!/bin/bash
 
+if [ -z "$1" ]
+then
+      echo "TARS username must be provided as an argument"
+      end
+else
+      username=$1
+fi
+
+
 # Copy files to cluster for a new code execution
 # Note that spaces in names are treated differently in the 2 cases
 
-scp "/mnt/d/Google Drive/git/out-of-equilibrium-detection/arguments.dat" aserov@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
-#scp "/mnt/d/Google Drive/git/out-of-equilibrium-detection/position.dat" aserov@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
+scp "./arguments.dat" ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
+#scp "./position.dat" ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
 
-for file in /mnt/d/Google\ Drive/git/out-of-equilibrium-detection/*.py
+for file in ./*.py
 do
-    scp "$file" aserov@tars.pasteur.fr:./out-of-equilibrium-detection/
+    scp "$file" ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/
 done
 
-scp "/mnt/d/Google Drive/git/out-of-equilibrium-detection/requirements.txt" aserov@tars.pasteur.fr:./out-of-equilibrium-detection/
-scp "/mnt/d/Google Drive/git/out-of-equilibrium-detection/job-manager/start_me.py" aserov@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
-scp "/mnt/d/Google Drive/git/out-of-equilibrium-detection/job-manager/sbatch_tars.sh" aserov@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
-scp "/mnt/d/Google Drive/git/out-of-equilibrium-detection/job-manager/sbatch_tars_common.sh" aserov@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
-scp "/mnt/d/Google Drive/git/out-of-equilibrium-detection/job-manager/job_manager.py" aserov@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
+scp "./requirements.txt" ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/
+scp "./job-manager/start_me.py" ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
+scp "./job-manager/sbatch_tars.sh" ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
+scp "./job-manager/sbatch_tars_common.sh" ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
+scp "./job-manager/job_manager.py" ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
 
- # scp ./job-manager/*.py aserov@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
- # scp ./job-manager/*.sh aserov@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
+ # scp ./job-manager/*.py ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/
+ # scp ./job-manager/*.sh ${username}@tars.pasteur.fr:./out-of-equilibrium-detection/job-manager/

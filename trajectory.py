@@ -14,15 +14,18 @@ from likelihood import (get_ln_likelihood_func_2_particles_x_link,
                         get_ln_likelihood_func_free_hookean_no_link_same_D,
                         get_ln_likelihood_func_free_hookean_with_link_same_D,
                         get_ln_likelihood_func_no_link, get_ln_prior_func,
-                        get_MLE,max_expected_D, max_expected_eta, max_expected_eta12)
+                        get_MLE, max_expected_D, max_expected_eta,
+                        max_expected_eta12)
 from simulate import (simulate_2_confined_particles_with_fixed_angle_bond,
                       simulate_a_free_hookean_dumbbell)
 from support import hash_from_dictionary, load_data, save_data, stopwatch
 
 
 class Trajectory:
-    def __init__(self, D1=2.0, D2=0.4, n1=1.0, n2=1.0, n12=30.0, M=1000, dt=0.05, L0=10.0,
-                 trial=0, angle=-np.pi / 3, recalculate=False, recalculate_BF=False,
+    def __init__(self, D1=2.0, D2=0.4, n1=1.0, n2=1.0, n12=30.0, M=1000,
+                 dt=0.05, L0=10.0,
+                 trial=0, angle=-np.pi / 3, recalculate=False,
+                 recalculate_BF=False,
                  dry_run=False, plot=False,
                  model='localized_different_D', dim=2, verbose=True):
 
@@ -39,8 +42,10 @@ class Trajectory:
         self.angle = angle
         self.model = model
         self.dim = dim
-        self.parameters = {'D1': D1, 'D2': D2, 'n1': n1, 'n2': n2, 'n12': n12, 'M': M,
-                           'dt': dt, 'L0': L0, 'model': model, 'angle': angle, 'trial': trial}
+        self.parameters = {'D1': D1, 'D2': D2, 'n1': n1, 'n2': n2, 'n12': n12,
+                           'M': M,
+                           'dt': dt, 'L0': L0, 'model': model, 'angle': angle,
+                           'trial': trial}
         if trial == 0:
             self.check_parameter_values()
 
@@ -54,7 +59,8 @@ class Trajectory:
         self.dry_run = dry_run
         self.plot = plot
         self.verbose = verbose
-        self._ln_prior, self._sample_from_the_prior, self.prior_hash = get_ln_prior_func(self.dt)
+        self._ln_prior, self._sample_from_the_prior, self.prior_hash = \
+            get_ln_prior_func(self.dt)
         self.parameters['prior_hash'] = self.prior_hash
         # print('Prior hash:', self.prior_hash)
 
@@ -85,10 +91,12 @@ class Trajectory:
         # Choose a model to fit
         if not self.dry_run:
             if model == 'free_same_D':
-                self._ln_likelihood_with_link = get_ln_likelihood_func_free_hookean_with_link_same_D(
-                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks)
-                self._ln_likelihood_no_link = get_ln_likelihood_func_free_hookean_no_link_same_D(
-                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks)
+                self._ln_likelihood_with_link = \
+                    get_ln_likelihood_func_free_hookean_with_link_same_D(
+                        ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks)
+                self._ln_likelihood_no_link = \
+                    get_ln_likelihood_func_free_hookean_no_link_same_D(
+                        ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks)
                 self._names_with_link = ('D1', 'n12', 'L0')
                 self._names_no_link = ('D1',)
 
@@ -96,35 +104,44 @@ class Trajectory:
                 raise NotImplemented()
 
             elif model == 'localized_same_D_detect_angle':
-                self._ln_likelihood_with_link = get_ln_likelihood_func_2_particles_x_link(
-                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks, rotation=True, same_D=True)
+                self._ln_likelihood_with_link = \
+                    get_ln_likelihood_func_2_particles_x_link(
+                        ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks,
+                        rotation=True, same_D=True)
                 self._ln_likelihood_no_link = get_ln_likelihood_func_no_link(
                     ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks)
                 self._names_with_link = ('D1', 'n1', 'n2', 'n12', 'alpha')
                 self._names_no_link = ('D1', 'n1')
 
-            elif model == 'localized_same_D_detect_angle_see_both':
-                self._both = True
-                self._ln_likelihood_with_link = get_ln_likelihood_func_2_particles_x_link(
-                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks, rotation=True, same_D=True,
-                    both=True)
-                self._ln_likelihood_no_link = get_ln_likelihood_func_no_link(
-                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks, same_D=True, both=True)
-                self._names_with_link = ('D1', 'n1', 'n2', 'n12', 'alpha')
-                self._names_no_link = ('D1', 'n1', 'n2')
-
             elif model == 'localized_different_D_detect_angle':
-                self._ln_likelihood_with_link = get_ln_likelihood_func_2_particles_x_link(
-                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks, rotation=True)
+                self._ln_likelihood_with_link = \
+                    get_ln_likelihood_func_2_particles_x_link(
+                        ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks,
+                        rotation=True)
                 self._ln_likelihood_no_link = get_ln_likelihood_func_no_link(
                     ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks)
                 self._names_with_link = ('D1', 'D2', 'n1', 'n2', 'n12', 'alpha')
                 self._names_no_link = ('D1', 'n1')
 
+            elif model == 'localized_same_D_detect_angle_see_both':
+                self._both = True
+                self._ln_likelihood_with_link = \
+                    get_ln_likelihood_func_2_particles_x_link(
+                        ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks,
+                        rotation=True, same_D=True,
+                        both=True)
+                self._ln_likelihood_no_link = get_ln_likelihood_func_no_link(
+                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks,
+                    same_D=True, both=True)
+                self._names_with_link = ('D1', 'n1', 'n2', 'n12', 'alpha')
+                self._names_no_link = ('D1', 'n1', 'n2')
+
             elif model == 'localized_different_D_detect_angle_see_both':
                 self._both = True
-                self._ln_likelihood_with_link = get_ln_likelihood_func_2_particles_x_link(
-                    ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks, rotation=True, both=True)
+                self._ln_likelihood_with_link = \
+                    get_ln_likelihood_func_2_particles_x_link(
+                        ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks,
+                        rotation=True, both=True)
                 self._ln_likelihood_no_link = get_ln_likelihood_func_no_link(
                     ks=self.ks, M=self.M, dt=self.dt, dRks=self.dRks, both=True)
                 self._names_with_link = ('D1', 'D2', 'n1', 'n2', 'n12', 'alpha')
@@ -195,7 +212,8 @@ class Trajectory:
                 warnings.warn(
                     "Saving data without a model name will be deprecated in the future",
                     PendingDeprecationWarning)
-                self._ln_model_evidence_with_link = self._dict_data['_ln_model_evidence_with_link']
+                self._ln_model_evidence_with_link = self._dict_data[
+                    '_ln_model_evidence_with_link']
                 return self._ln_model_evidence_with_link
 
             # calculate
@@ -272,7 +290,8 @@ class Trajectory:
             if label_evidence in self._dict_data and not np.isnan(self._dict_data[label_evidence]):
                 # The no link result does not depend on the model, but depends on seeing both
                 # particles
-                self._ln_model_evidence_no_link = self._dict_data[label_evidence]
+                self._ln_model_evidence_no_link = self._dict_data[
+                    label_evidence]
                 return self._ln_model_evidence_no_link
 
             # calculate
@@ -361,7 +380,8 @@ class Trajectory:
 
     @property
     def simulation_time(self):
-        if np.isnan(self._simulation_time) and '_simulation_time' in self._dict_data:
+        if np.isnan(self._simulation_time) \
+                and '_simulation_time' in self._dict_data:
             self._simulation_time = self._dict_data['_simulation_time']
 
         return self._simulation_time
@@ -371,26 +391,31 @@ class Trajectory:
         if np.isnan(self._calculation_time_link) and \
                 self.model in self._dict_data and \
                 '_calculation_time_link' in self._dict_data[self.model]:
-            self._calculation_time_link = self._dict_data[self.model]['_calculation_time_link']
+            self._calculation_time_link = self._dict_data[self.model][
+                '_calculation_time_link']
 
         return self._calculation_time_link
 
     @property
     def calculation_time_no_link(self):
-        if np.isnan(self._calculation_time_no_link) and '_calculation_time_no_link' in \
+        if np.isnan(
+                self._calculation_time_no_link) and '_calculation_time_no_link' in \
                 self._dict_data:
-            self._calculation_time_no_link = self._dict_data['_calculation_time_no_link']
+            self._calculation_time_no_link = self._dict_data[
+                '_calculation_time_no_link']
 
         return self._calculation_time_no_link
 
     def calculate_hash(self, old_hash=False):
-        return hash_from_dictionary(parameters=self.parameters, dim=self.dim, use_model=old_hash)
+        return hash_from_dictionary(parameters=self.parameters, dim=self.dim,
+                                    use_model=old_hash)
 
     def _load_data(self):
         self._dict_data, _ = load_data(self._hash)
         # If not loaded, try with the old hash
         if 't' not in self._dict_data:
-            self._dict_data, _ = load_data(self.calculate_hash(old_hash=True)[0])
+            self._dict_data, _ = load_data(
+                self.calculate_hash(old_hash=True)[0])
 
     def _save_data(self):
         # self._dict_data, _ = load_data(self._hash)
@@ -402,7 +427,8 @@ class Trajectory:
         if not self.recalculate:
             self._load_data()
             if np.all([key in self._dict_data for key in 't R dR'.split()]):
-                self._t, self._R, self._dR = [self._dict_data[key] for key in 't R dR'.split()]
+                self._t, self._R, self._dR = [self._dict_data[key]
+                                              for key in  't R dR'.split()]
                 # if '_simulation_time'in self._dict_data:
                 #     self._simulation_time = self._dict_data['_simulation_time']
                 return
@@ -414,9 +440,11 @@ class Trajectory:
         self._simulation_time = time.time() - start
 
         # Save
-        self._dict_data = {'t': self._t, 'R': self._R, 'dR': self._dR, '_simulation_time':
-            self._simulation_time, **self.parameters}
+        self._dict_data = {'t': self._t, 'R': self._R, 'dR': self._dR,
+                           '_simulation_time':
+                               self._simulation_time, **self.parameters}
         self._save_data()
+        print('Trajectory simulated successfully')
         # save_data(dict_data=dict_data, hash=self._hash)
 
     def _calculate_DFT(self):
@@ -442,18 +470,21 @@ class Trajectory:
     def get_ln_posterior(self, link):
         if not link:
             def _ln_posterior(**kwargs):
-                return self._ln_prior(**kwargs) + self._ln_likelihood_no_link(**kwargs)
+                return self._ln_prior(**kwargs) + self._ln_likelihood_no_link(
+                    **kwargs)
         else:
             def _ln_posterior(**kwargs):
-                return self._ln_prior(**kwargs) + self._ln_likelihood_with_link(**kwargs)
+                return self._ln_prior(**kwargs) + self._ln_likelihood_with_link(
+                    **kwargs)
         return _ln_posterior
 
     def _calculate_MLE(self, link, names):
 
         # names = self._names_with_link if link else self._names_no_link
         if self.verbose:
-            print('\nMLE search started for a simulation with true parameters:\n',
-                  self.parameters)
+            print(
+                '\nMLE search started for a simulation with true parameters:\n',
+                self.parameters)
             print(f'Hash: {self.hash}\nHash no trial: {self.hash_no_trial}')
 
         if link:
@@ -464,7 +495,8 @@ class Trajectory:
 
         return get_MLE(
             ln_posterior=self.get_ln_posterior(link), names=names,
-            sample_from_the_prior=self._sample_from_the_prior, hash_no_trial=self._hash_no_trial,
+            sample_from_the_prior=self._sample_from_the_prior,
+            hash_no_trial=self._hash_no_trial,
             link=link, log_lklh=log_lklh)
 
     def _calculate_bayes_factor(self):
@@ -477,17 +509,18 @@ class Trajectory:
         # Check if the prior will allow inference for this parameters
         dct = {'D1': (self.D1, max_expected_D),
                'D2': (self.D2, max_expected_D),
-               'n1': (self.n1, max_expected_eta/self.dt),
-               'n2': (self.n2, max_expected_eta/self.dt),
-               'n12': (self.n12, max_expected_eta12/self.dt)}
+               'n1': (self.n1, max_expected_eta / self.dt),
+               'n2': (self.n2, max_expected_eta / self.dt),
+               'n12': (self.n12, max_expected_eta12 / self.dt)}
 
         for key, value in dct.items():
             # print(key, value)
             if value[0] > 2 * value[1]:
-                logging.warning(f'The simulated value of {key} is outside the expected region: '
-                                f'{value[0]:.4g} > {value[1]:.4g}.'
-                                f'\nIf the two values are far apart, the inference will likely '
-                                f'fail.')
+                logging.warning(
+                    f'The simulated value of {key} is outside the expected region: '
+                    f'{value[0]:.4g} > {value[1]:.4g}.'
+                    f'\nIf the two values are far apart, the inference will likely '
+                    f'fail.')
 
 
 # Tests

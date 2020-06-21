@@ -19,12 +19,15 @@ from scipy.optimize import root, root_scalar
 from scipy.special import gamma
 from pickle import UnpicklingError
 import warnings
+from pathlib import Path
+from numpy import arctan, pi
 
 # from calculate import max_abs_lg_B_per_M
 
 hostname = socket.gethostname()
-if hostname == 'onsager-dbc':
-    data_folder = r'D:\calculated_data\out-of-equilibrium_detection'
+data_folder = r'D:\calculated_data\out-of-equilibrium_detection'
+if hostname == 'onsager-dbc' or Path(data_folder).exists():
+    pass
 else:
     data_folder = 'data'
 

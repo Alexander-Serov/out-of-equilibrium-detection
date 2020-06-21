@@ -555,9 +555,12 @@ if __name__ == '__main__':
     # )
 
     test_traj = Trajectory.from_parameter_dictionary(
-        {'D1': 10.0, 'D2': 0.1, 'n1': 1.0, 'n2': 1.0, 'n12': 0.0843393, 'M': 10, 'dt': 0.05,
-         'L0': 20.0, 'model': 'localized_different_D_detect_angle', 'angle': 0.0, 'trial': 12,
-         'recalculate_BF': 0, 'verbose': 1}
+        {'D2': 0.1, 'n1': 1.0, 'n2': 1.0, 'n12': 30.0, 'dt': 0.05, 'L0': 20,
+         'angle': 0,
+         'model': 'localized_different_D_detect_angle', 'trial': 47,
+         'M': 8,
+         'D1': 0.001,
+         'recalculate_BF': 0, 'verbose': 1, 'recalculate': 0}
     )
 
     # print(test_traj.dR.shape)
@@ -570,6 +573,8 @@ if __name__ == '__main__':
     #       test_traj.MLE_link)
     # print('\nEvidence without link: ', test_traj.ln_model_evidence_no_link, 'MLE: ',
     #       test_traj.MLE_no_link)
+    print('Hash: ', test_traj.hash)
+    print('Hash no trial: ', test_traj.hash_no_trial)
     print('Lg Bayes factor for link: ', test_traj.lgB)
     print('Calc time link: ', test_traj.calculation_time_link, 's')
     print('Calc time no link: ', test_traj.calculation_time_no_link, 's')

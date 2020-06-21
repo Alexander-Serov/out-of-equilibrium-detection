@@ -198,11 +198,14 @@ class Trajectory:
 
     @property
     def ln_model_evidence_with_link(self):
-        if self._ln_model_evidence_with_link is None or np.isnan(self._ln_model_evidence_with_link):
+        if self._ln_model_evidence_with_link is None or not np.isfinite(
+                self._ln_model_evidence_with_link):
             # check loaded
             if (self.model in self._dict_data
-                    and '_ln_model_evidence_with_link' in self._dict_data[self.model]
-                    and not np.isnan(self._dict_data[self.model]['_ln_model_evidence_with_link'])):
+                    and '_ln_model_evidence_with_link' in self._dict_data[
+                        self.model]
+                    and np.isfinite(self._dict_data[self.model][
+                                        '_ln_model_evidence_with_link'])):
                 self._ln_model_evidence_with_link = self._dict_data[self.model][
                     '_ln_model_evidence_with_link']
                 return self._ln_model_evidence_with_link
@@ -241,7 +244,7 @@ class Trajectory:
                                  '_calculation_time_link': self._calculation_time_link}
 
                 # Save
-                if not np.isnan(self._ln_model_evidence_with_link):
+                if np.isfinite(self._ln_model_evidence_with_link):
                     if self.model in self._dict_data:
                         self._dict_data[self.model].update(model_results)
                     else:
@@ -275,7 +278,8 @@ class Trajectory:
 
     @property
     def ln_model_evidence_no_link(self):
-        if self._ln_model_evidence_no_link is None or np.isnan(self._ln_model_evidence_no_link):
+        if self._ln_model_evidence_no_link is None or not np.isfinite(
+                self._ln_model_evidence_no_link):
             # if self.model in self._dict_data and '_ln_model_evidence_no_link' in \
             #         self._dict_data[self.model]:
             #     self._ln_model_evidence_no_link = self._dict_data[self.model][
@@ -287,7 +291,8 @@ class Trajectory:
                 label_evidence += '_both'
                 label_MLE += '_both'
 
-            if label_evidence in self._dict_data and not np.isnan(self._dict_data[label_evidence]):
+            if label_evidence in self._dict_data and np.isfinite(
+                    self._dict_data[label_evidence]):
                 # The no link result does not depend on the model, but depends on seeing both
                 # particles
                 self._ln_model_evidence_no_link = self._dict_data[
@@ -312,7 +317,7 @@ class Trajectory:
                 self._calculation_time_no_link = time.time() - start
 
                 # Save
-                if not np.isnan(self._ln_model_evidence_no_link):
+                if np.isfinite(self._ln_model_evidence_no_link):
                     model_results = {label_MLE: self._MLE_no_link,
                                      label_evidence: self._ln_model_evidence_no_link,
                                      '_calculation_time_no_link': self._calculation_time_no_link}
@@ -327,11 +332,6 @@ class Trajectory:
     @property
     def MLE_no_link(self):
         if self._MLE_no_link is None:
-            # check loaded
-            # if self.model in self._dict_data and '_MLE_no_link' in \
-            #         self._dict_data[self.model]:
-            #     self._MLE_no_link = self._dict_data[self.model]['_MLE_no_link']
-            #     return self._MLE_no_link
             label_no_link = '_MLE_no_link'
             if self._both:
                 label_no_link += '_both'
@@ -350,10 +350,10 @@ class Trajectory:
 
     @property
     def lgB(self):
-        if self._lgB is None or np.isnan(self._lgB):
+        if self._lgB is None or not np.isfinite(self._lgB):
             # check loaded
-            if self.model in self._dict_data and '_lgB' in self._dict_data[self.model] and not \
-                    np.isnan(self._dict_data[self.model]['_lgB']):
+            if self.model in self._dict_data and '_lgB' in self._dict_data[self.model] \
+                    and np.isfinite(self._dict_data[self.model]['_lgB']):
                 self._lgB = self._dict_data[self.model]['_lgB']
                 return self._lgB
 
@@ -368,7 +368,7 @@ class Trajectory:
             # calculate
             self._calculate_bayes_factor()
             # Save
-            if not np.isnan(self._lgB):
+            if np.isfinite(self._lgB):
                 model_results = {'_lgB': self._lgB}
                 if self.model in self._dict_data:
                     self._dict_data[self.model].update(model_results)
@@ -428,7 +428,7 @@ class Trajectory:
             self._load_data()
             if np.all([key in self._dict_data for key in 't R dR'.split()]):
                 self._t, self._R, self._dR = [self._dict_data[key]
-                                              for key in  't R dR'.split()]
+                                              for key in 't R dR'.split()]
                 # if '_simulation_time'in self._dict_data:
                 #     self._simulation_time = self._dict_data['_simulation_time']
                 return

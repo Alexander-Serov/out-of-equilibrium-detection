@@ -439,7 +439,7 @@ def set_figure_size(num, rows, page_width_frac, height_factor=1.0, clear=True):
     # fig.tight_layout()
 
     # Return figure handle
-    return (fig, figsize)
+    return fig, figsize
 
 
 def find_inverse_gamma_parameters(interval, tau):

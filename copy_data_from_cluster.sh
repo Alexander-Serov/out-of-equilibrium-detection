@@ -10,34 +10,42 @@ LOCAL_PATH=/mnt/d/calculated_data/out-of-equilibrium_detection/
 EXTENSION="*.pyc"
 NUM_FILES=0
 
+if [ -z "$1" ]
+then
+      echo "TARS username must be provided as an argument"
+      end
+else
+      username=$1
+fi
+
 # Save current date & time for further re-use
-ssh aserov@tars.pasteur.fr touch start_date2
+ssh ${username}@tars.pasteur.fr touch start_date2
 
 # Check if last copy date file exists
-if ssh aserov@tars.pasteur.fr "test -e" start_date;
+if ssh ${username}@tars.pasteur.fr "test -e" start_date;
 then
-        NEWER_THAN=`ssh aserov@tars.pasteur.fr "date -r" start_date`
+        NEWER_THAN=`ssh ${username}@tars.pasteur.fr "date -r" start_date`
 else
-        ssh aserov@tars.pasteur.fr touch --date "'$NEWER_THAN'" start_date
+        ssh ${username}@tars.pasteur.fr touch --date "'$NEWER_THAN'" start_date
 fi
 echo "Started copy on $(date)."
 echo "Copying results calculated after $NEWER_THAN."
 
 # Check if any files need to be copied
-#NUM_FILES=`ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l`
+#NUM_FILES=`ssh ${username}@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" | wc -l`
 #echo "Found $NUM_FILES files to copy..."
 #if (($NUM_FILES>0))
 #then
 echo "Compressing..."
-ssh aserov@tars.pasteur.fr rm -f ./copy.tar
+ssh ${username}@tars.pasteur.fr rm -f ./copy.tar
 # xform is used to drop the absolute path
-ssh aserov@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" -exec "tar rf ./copy.tar --xform='s|.*/||' --show-transformed-names {} +"
+ssh ${username}@tars.pasteur.fr find $SERVER_PATH -type f -newer start_date -name "$EXTENSION" -exec "tar rf ./copy.tar --xform='s|.*/||' --show-transformed-names {} +"
 echo "Done!"
 
 # Copy
-if ssh aserov@tars.pasteur.fr "test ./copy.tar";
+if ssh ${username}@tars.pasteur.fr "test ./copy.tar";
 then
-    scp aserov@tars.pasteur.fr:./copy.tar ./
+    scp ${username}@tars.pasteur.fr:./copy.tar ./
 
     NUM_FILES=`tar -tf ./copy.tar | wc -l`
     echo "$NUM_FILES files received from server"
@@ -48,17 +56,17 @@ then
 
     # Cleaning up
     rm ./copy.tar
-    ssh aserov@tars.pasteur.fr rm ./copy.tar
+    ssh ${username}@tars.pasteur.fr rm ./copy.tar
 else
     echo "No files to copy. Finished!"
 fi
 
 # Replace old-date file with a new one
-if [ $NUM_FILES -gt 0 ];
+if [ "$NUM_FILES" -gt 0 ];
 then
-    ssh aserov@tars.pasteur.fr mv -f start_date2 start_date
+    ssh ${username}@tars.pasteur.fr mv -f start_date2 start_date
 fi
 
 
 
-#### ssh aserov@tars.pasteur.fr rm ./start_date
+#### ssh ${username}@tars.pasteur.fr rm ./start_date

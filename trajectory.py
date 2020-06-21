@@ -87,6 +87,9 @@ class Trajectory:
                         new_dict_data.update({key: self._dict_data[key]})
                 self._dict_data = new_dict_data
                 self._save_data()
+        else:
+            self._dict_data = {**self.parameters}
+            self._save_data()
 
         # Choose a model to fit
         if not self.dry_run:

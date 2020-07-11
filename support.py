@@ -23,17 +23,20 @@ from pathlib import Path
 from numpy import arctan, pi
 
 # Select the right data location
+scratch_folder = os.environ.get('MYSCRATCH', None)
+if scratch_folder is not None:
+    scratch_folder = Path(scratch_folder) / 'out-of-equilibrium_detection'
 data_folders = {
-    'tars': os.environ.get('MYSCRATCH', None),
-    'maestro': os.environ.get('MYSCRATCH', None),
-    'onsager-dbc': r'D:\calculated_data\out-of-equilibrium_detection',
+    'tars': scratch_folder,
+    'maestro': scratch_folder,
+    'onsager-dbc': Path(r'D:\calculated_data\out-of-equilibrium_detection'),
     '': 'data'
 }
 
 hostname = socket.gethostname()
 for key, folder in data_folders.items():
     if hostname.startswith(key) and folder is not None:
-        data_folder = Path(folder)
+        data_folder = folder
         break
 print(f'The results will be stored in {data_folder}.')
 

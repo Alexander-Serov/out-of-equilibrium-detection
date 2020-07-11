@@ -2,6 +2,7 @@ import numpy as np
 
 from plot import eta_default, L0, gamma_default, eta12_default
 from plot import D2 as D2_default
+from plot import calculate_and_plot_contour_plot
 
 
 class EnergyTransferResults():
@@ -19,6 +20,7 @@ class EnergyTransferResults():
                  statistic='mean',
                  title='',
                  figname_base='figure',
+                 clip=10,
                  verbose=False,
                  recalculate_BF=False,
                  recalculate_trajectory=False,
@@ -47,15 +49,16 @@ class EnergyTransferResults():
         self.print_MLE = print_MLE
         self.mesh_resolution = 2 ** resolution + 1
         self.rotation = rotation
-        self.x_label=x_label
-        self.x_range=x_range
+        self.x_label = x_label
+        self.x_range = x_range
         self.update_x = update_x
         self.y_label = y_label
         self.y_range = y_range
         self.update_y = update_y
         self.title = title
         self.figname_base = figname_base
-        self.statistic=statistic
+        self.statistic = statistic
+        self.clip = clip
 
         self.recalculate_BF = recalculate_BF
         self.models = {
@@ -76,6 +79,7 @@ class EnergyTransferResults():
                                   'rotation': self.rotation,
                                   'cluster': self.cluster,
                                   }
+        self.lg_BF_vals = None
 
     def run(self):
         """Perform/schedule calculations with and without a link.
@@ -84,4 +88,24 @@ class EnergyTransferResults():
         -------
 
         """
-        pass
+        self.lg_BF_vals = calculate_and_plot_contour_plot(
+            self.default_args_dict,
+            x_update_func=self.update_y,  # todo why flipped? because of matrix
+            y_update_func=self.update_x,  # representation, right?
+            trials=self.trials,
+            Ms=self.Ms,
+            mesh_resolution_x=self.mesh_resolution,
+            mesh_resolution_y=self.mesh_resolution,
+            xlabel=self.y_label,
+            ylabel=self.x_label,
+            title=self.title,
+            x_range=self.x_range,
+            y_range=self.y_range,
+            cluster=self.cluster,
+            verbose=self.verbose,
+            figname_base=self.figname_base,
+            models=self.models,
+            clip=self.clip,
+            print_MLE=self.print_MLE,
+            statistic=self.statistic,
+        )

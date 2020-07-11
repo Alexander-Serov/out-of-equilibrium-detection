@@ -40,7 +40,7 @@ eta12_default = 1.5
 gamma_default = 5
 M_default = 1000
 dt = 0.05  # s
-D2 = 0.1  # um^2/s
+D2 = 0.1  # um^2/s, this is the default value
 L0 = 20  # um
 
 # Color values and confidence levels for the 5-color matrix

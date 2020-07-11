@@ -46,9 +46,9 @@ L0 = 20  # um
 # Color values and confidence levels for the 5-color matrix
 CONFIDENCE_LEVEL_LG_B = 1
 NO_LINK_MODEL = 1
-ENERGY_TRANSFER_MODEL = 2
+LINK_ENERGY_TRANSFER_UNCERTAIN_MODEL = 2
 SAME_DIFFUSIVITY_MODEL = 3
-LINK_ENERGY_TRANSFER_UNCERTAIN_MODEL = 4
+ENERGY_TRANSFER_MODEL = 4
 color_dict = {0: 'Inconcl',
               NO_LINK_MODEL: 'No link',
               ENERGY_TRANSFER_MODEL: 'En tr',
@@ -157,18 +157,105 @@ def contour_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
                  figname=None,
                  clear=True,
                  cmap='bwr',
+                 underlying_mask=None,
+                 clip=None,
+                 colorbar: bool = True,
+                 colorbar_ticks=None,
                  ):
+    """
+
+    Parameters
+    ----------
+    X
+    Y
+    Z
+    Z_lgB
+    fig_num
+    clims
+    levels
+    cb_label
+    xscale
+    yscale
+    xlabel
+    ylabel
+    lgB_levels
+    title
+    figname
+    clear
+    cmap
+    underlying_mask : numpy.ndarray, optional
+        If provided, also generate another underlying plot shadedin gray. Is
+        supposed to be used for showing a zone where having no link is more
+        likely.
+    clip : None or float, optional
+        If provided, clip the lg Bayes factor values at the given level of
+        absolute values.
+
+    Returns
+    -------
+
+    """
+    # Constants
+
+    ## Green
+    # cmap_mask = 'brg'
+    # mask_level = 0.85
+    # alpha_mask_shade = 0.99
+
+    # White transparent
+    cmap_mask = 'Greys'
+    mask_level = 0.
+    alpha_mask_shade = 0.75
+
+    # Check input values
+    if clip is not None and clip <= 0:
+        raise ValueError('`clip` value must be positive or None.')
+
     set_figure_size(num=fig_num, rows=rows, page_width_frac=page_width_frac,
                     height_factor=height_factor, clear=clear)
-    # print(clims)
+
+    Z = copy.copy(Z)
+
+    # Clip lgB if requested
+
+    if clip is not None:
+        # inds = np.argwhere(np.abs(Z) > clip)
+        # Z[inds] = clip * np.sign(Z[inds])
+
+        Z[np.abs(Z) > clip] = clip * np.sign(Z[np.abs(Z) > clip])
+
+        # Adjust clims accordingly
+        if clims is not None:
+            # clims = np.array(clims)
+            # inds = np.abs(clims) > clip
+            # clims[inds] = clip * np.sign(clims[inds])
+            clims[0] = max([clims[0], -clip])
+            clims[1] = min([clims[1], clip])
+
+        # Drop levels that are outside clip
+        if levels is not None:
+            levels = [level for level in levels if abs(level) <= clip]
+
+    # print('clims', clip, clims)
+    # print('Max:', np.max(clims), np.max(Z), np.min(Z))
+    # print('Zlgb', Z_lgB)
+
+    # print('Z inside: ', Z)
 
     if clims is not None:
-        im = plt.contourf(X, Y, Z, cmap=cmap, vmin=clims[0], vmax=clims[1], levels=levels)
-    else:
-        im = plt.contourf(X, Y, Z, cmap=cmap, levels=levels)
+        im = plt.contourf(X, Y, Z, cmap=cmap, vmin=clims[0], vmax=clims[1],
+                          levels=levels, zorder=2)
+        # # Try to replace with sns
+        # im = sns.kdeplot(Z) #, cmap=cmap, vmin=clims[0], vmax=clims[1],
+        #                   # levels=levels)
 
-    if not np.all(np.isnan(Z)):
-        cb = plt.colorbar()
+    else:
+        im = plt.contourf(X, Y, Z, cmap=cmap, levels=levels, zorder=2)
+
+    if not np.all(np.isnan(Z)) and colorbar:
+        cb = plt.colorbar(ticks=colorbar_ticks)
+        # if clims is not None:
+        #     plt.clim(clims[0], clims[1])
         # todo: temporarily disabled the colorbar label
         # cb.set_label(cb_label)
 
@@ -177,7 +264,18 @@ def contour_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
         if Z_lgB is None:
             Z_lgB = Z
         plt.contour(X, Y, Z_lgB, levels=lgB_levels, colors='k', linewidths=1,
-                    linestyles=['-', '--', '-'])
+                    linestyles=['-', '--', '-'], zorder=3)
+
+    if underlying_mask is not None:
+        # Plot here the underlying plot of the region that is
+        # print('UM', underlying_mask)
+        # print(mask_level)
+        # print(underlying_mask * mask_level)
+        # print((underlying_mask * mask_level).shape)
+        plt.contourf(X, Y, underlying_mask * mask_level, cmap=cmap_mask,
+                     vmin=0,
+                     vmax=1, alpha=alpha_mask_shade,  # levels=[0, mask_level],
+                     zorder=4)
 
     # Labels
     if xscale is 'log':
@@ -192,7 +290,7 @@ def contour_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
         plt.title(title)
 
     # Save
-    if figname and len(figname):
+    if figname is not None and len(figname):
         try:
             plt.tight_layout()
             figpath = os.path.join(fig_folder, figname)
@@ -218,14 +316,23 @@ def multi_model_comparison_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
                                 colorbar: bool = True,
                                 colorbar_ticks=None, ):
     cmap_name = 'Set2'
-    cmap_len = 5
+    cmap_len = int(np.max(Z)) + 1
+    cmap = plt.get_cmap(cmap, cmap_len)
+    # if cmap_len > 4:
+    #     cmap[4], cmap[2] = cmap[2], cmap[4]
 
     # Define colorbar formatter
-    labels = list(color_dict.values())
-    norm = matplotlib.colors.BoundaryNorm(np.arange(-0.5, 0.5 + cmap_len, 1), cmap_len)
-    fmt = matplotlib.ticker.FuncFormatter(lambda x, pos: labels[norm(x)])
+    # labels = list(color_dict.values())
 
-    fig, _ = set_figure_size(num=fig_num, rows=rows, page_width_frac=page_width_frac,
+    # Discretize the value
+    norm = matplotlib.colors.BoundaryNorm(np.arange(-0.5, 0.5 + cmap_len, 1),
+                                          cmap_len)
+    # Get label for value
+    # print([color_dict[norm(x)] for x in range(5)])
+    fmt = matplotlib.ticker.FuncFormatter(lambda x, pos: color_dict[norm(x)])
+
+    fig, _ = set_figure_size(num=fig_num, rows=rows,
+                             page_width_frac=page_width_frac,
                              height_factor=height_factor, clear=clear)
 
     # fig, ax = plt.subplots()
@@ -238,7 +345,7 @@ def multi_model_comparison_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
     # Add continuous axes below
     # Xs_plot, Ys_plot = np.meshgrid(X, Y)
     im = ax.pcolormesh(X, Y, Z,
-                       cmap=plt.get_cmap(cmap_name, cmap_len),
+                       cmap=cmap,
                        norm=norm,
                        )
     #                    antialiased=True)#, norm=norm)
@@ -248,6 +355,17 @@ def multi_model_comparison_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.colorbar(im, ax=ax, ticks=np.arange(0, cmap_len, 1), format=fmt)
+
+    # Save
+    if figname is not None and len(figname):
+        try:
+            plt.tight_layout()
+            figpath = os.path.join(fig_folder, figname + '-triple')
+            if png:
+                plt.savefig(figpath + '.png', bbox_inches='tight', pad_inches=0)
+            plt.savefig(figpath + '.pdf', bbox_inches='tight', pad_inches=0)
+        except AttributeError as e:
+            logging.warning('Unable to save figure.\n')  # str(e))
 
 
 def calculate_and_plot_contour_plot(
@@ -271,9 +389,57 @@ def calculate_and_plot_contour_plot(
         figname_base=str(),
         put_M_in_title=True,
         plot_simulation_time=False,
+        models: dict = None,
+        clip: float = None,
+        print_MLE=False,
+        statistic: str = 'median',
 ):
+    """
+
+    Parameters
+    ----------
+    clip : None or float, optional
+        If provided, clip the lg Bayes factor values at the given level of
+        absolute values.
+    args_dict
+    x_update_func
+    y_update_func
+    trials
+    Ms
+    x_step
+    mesh_resolution_x
+    mesh_resolution_y
+    xlabel
+    ylabel
+    xscale
+    yscale
+    title
+    x_range
+    y_range
+    cluster
+    verbose
+    figname_base
+    put_M_in_title
+    plot_simulation_time
+    models : dict
+        Dictionary of the form `model_label`: full_moodel name specifying the models for which the calculations
+        will be performed. The model label may appear in the corresponding plots.
+    statistic : one of {'median', 'mean'}
+        Parameters defining how the Bayes factors for different trials will be combined before plotting.
+        Currently supports only 'median' and 'mean'.
+
+
+    Returns
+    -------
+
+    Notes
+    -------
+
+
+    """
     if len(x_range) == 2:
-        Xs = np.logspace(log10(x_range[0]), log10(x_range[1]), num=mesh_resolution_x)
+        Xs = np.logspace(log10(x_range[0]), log10(x_range[1]),
+                         num=mesh_resolution_x)
     elif len(x_range) == 3:
         Xs = np.arange(x_range[0], x_range[1] + x_range[2], x_range[2])
     else:
@@ -287,6 +453,14 @@ def calculate_and_plot_contour_plot(
         Ys = np.arange(y_range[0], y_range[1] + y_range[2], y_range[2])
     else:
         Ys = y_range
+
+    if models is None:
+        if 'model' not in args_dict:
+            raise ValueError('`model` must be provided.')
+        else:
+            warnings.warn(
+                'Consider using the new interface for supplying model information.')
+            models = {args_dict['model']: args_dict['model']}
 
     cluster_counter = 0
     with open(arguments_file, 'a') as file:
@@ -308,8 +482,8 @@ def calculate_and_plot_contour_plot(
                     for ind_y, y in enumerate(Ys):
                         y_update_func(args_dict, y)
 
-                    for ind_x, x in enumerate(Xs):
-                        x_update_func(args_dict, x)
+                        for ind_x, x in enumerate(Xs):
+                            x_update_func(args_dict, x)
 
                             lg_BF_vals[
                                 ind_model, ind_M, ind_x, ind_y, trial], ln_evidence_with_link, \
@@ -329,42 +503,148 @@ def calculate_and_plot_contour_plot(
                                 file.write(str(args_dict) + '\n')
                                 cluster_counter += 1
 
+                            if print_MLE and trial == 0:
+                                print('\nPrinting MLEs.\nArguments:\n',
+                                      repr(args_dict))
+                                print('MLE with link:\t', traj.MLE_link)
+                                print('MLE no link:\t', traj.MLE_link)
+                                print('lgB for link:\t', traj.lgB)
+
     if cluster and verbose:
         print('Warning: verbose was active')
-    if cluster:
-        # Reset start position on cluster
-        position_file = 'position.dat'
-        with open(position_file, 'w') as fp_position:
-            fp_position.write('{0:d}'.format(0))
+    # if cluster:
+    #     # Reset start position on cluster
+    #     position_file = 'position.dat'
+    #     with open(position_file, 'w') as fp_position:
+    #         fp_position.write('{0:d}'.format(0))
+
+    # Special calculations for triple comparison
+    if len(models) > 1 and 'with_eng_transfer' == list(models.keys())[0] \
+            and 'no_eng_transfer' == list(models.keys())[1]:
+        lg_BF_vals_energy_transfer = lg_BF_vals[0, :, :, :, :] - \
+                                     lg_BF_vals[1, :, :, :, :]
 
     # %% Calculating means and CI over trials
-    median_lg_BFs = np.nanmedian(lg_BF_vals, axis=3)
-    median_simulation_time_hours = np.nanmedian(simulation_time, axis=3)
+    if statistic == 'median':
+        plot_lg_BFs = np.nanmedian(lg_BF_vals, axis=4)
+        if len(models) > 1:
+            plot_lg_BFs_energy_transfer = np.nanmedian(
+                lg_BF_vals_energy_transfer,
+                axis=3)
+    elif statistic == 'mean':
+        plot_lg_BFs = np.nanmean(lg_BF_vals, axis=4)
+        if len(models) > 1:
+            plot_lg_BFs_energy_transfer = np.nanmean(lg_BF_vals_energy_transfer,
+                                                     axis=3)
+    else:
+        raise ValueError(f'Received unexpected statistic: {statistic}.')
+    median_simulation_time_hours = np.nanmedian(simulation_time, axis=(0, 4))
     avg_time = np.nanmean(full_time)
-    count = np.sum(np.logical_not(np.isnan(full_time)))
+    count = np.sum(~np.isnan(full_time))
     sum_hours = np.nansum(full_time) / 3600 / count * np.prod(full_time.shape)
     around = 'around ' if count < np.prod(full_time.shape) else ''
 
+    if len(models) > 1:
+        bl_nolink = (plot_lg_BFs[0, :, :, :] < 0) & \
+                    (plot_lg_BFs[1, :, :, :] < 0)
+
+        five_color_matrix = get_five_color_matrix(plot_lg_BFs,
+                                                  plot_lg_BFs_energy_transfer)
+        print(five_color_matrix)
+
+        if not np.any(five_color_matrix):
+            warnings.warn(
+                'No results for the moment. Plotting a dummy five-colors matrix.')
+            five_color_matrix = np.array([[1, 1, 1, 1, 1, 1, 1, 1, 1],
+                                          [1, 1, 1, 1, 1, 1, 1, 1, 1],
+                                          [1, 1, 1, 1, 1, 1, 1, 1, 1],
+                                          [3, 1, 1, 1, 1, 1, 1, 1, 1],
+                                          [2, 2, 2, 1, 1, 3, 4, 4, 4],
+                                          [2, 2, 3, 1, 3, 4, 2, 2, 2],
+                                          [2, 2, 4, 1, 3, 2, 2, 2, 2],
+                                          [2, 2, 2, 1, 3, 2, 2, 2, 2],
+                                          [2, 2, 2, 1, 3, 2, 2, 2, 2]])
+            five_color_matrix = five_color_matrix[np.newaxis, ...]
+            Xs = np.array(
+                [1.00000000e-03, 4.21696503e-03, 1.77827941e-02, 7.49894209e-02,
+                 3.16227766e-01, 1.33352143e+00, 5.62341325e+00, 2.37137371e+01,
+                 1.00000000e+02])
+            Ys = np.array(
+                [1.00000000e-02, 3.16227766e-02, 1.00000000e-01, 3.16227766e-01,
+                 1.00000000e+00, 3.16227766e+00, 1.00000000e+01, 3.16227766e+01,
+                 1.00000000e+02])
+
     if not np.isnan(avg_time):
-        print(f'On average, it took {avg_time / 60:.1f} min to calculate each of the {count:d} '
-              f'recorded points.')
-        print(f'Calculation of the whole plot takes {around}{sum_hours:.1f} hours of CPU time or '
-              f'{around}{sum_hours/2000:.1f} hours on 2000 CPUs.')
+        quantiles = [0, 0.5 - 0.95 / 2, 0.5, 0.5 + 0.95 / 2, 1]
+        print(
+            f'On average, it took {avg_time / 60:.1f} min to calculate each of '
+            f'the {count:d} recorded points.',
+            f'Calculation of the whole plot ({np.prod(full_time.shape)} points) takes {around}'
+            f'{sum_hours:.1f} hours '
+            f'of CPU time or {around}{sum_hours / 2000:.1f} hours on 2000 CPUs.',
+            f'Individual calculation time quantiles {quantiles}: '
+            f'{np.nanquantile(full_time, quantiles) / 3600} h',
+            sep='\n')
     print(f'{cluster_counter} calculations scheduled for the cluster')
 
     if trials > 1:
-        CIs = np.full([len(Ms), len(Xs), len(Ys), 2], np.nan)
-        CIs[:, :, :, 0] = np.nanquantile(lg_BF_vals, (1 - confidence_level) / 2, axis=3)  # 0.025
-        CIs[:, :, :, 1] = np.nanquantile(lg_BF_vals, 1 - (1 - confidence_level) / 2,
-                                         axis=3)  # 0.975
-        CI_widths = CIs[:, :, :, 1] - CIs[:, :, :, 0]
-        min_CI_width = np.floor(np.nanmin(CI_widths))
-        max_CI_width = np.ceil(np.nanmax(CI_widths))
+        CIs = np.full([len(models), len(Ms), len(Xs), len(Ys), 2], np.nan)
+        CIs[:, :, :, :, 0] = np.nanquantile(lg_BF_vals,
+                                            (1 - confidence_level) / 2,
+                                            axis=4)  # 0.025
+        CIs[:, :, :, :, 1] = np.nanquantile(lg_BF_vals,
+                                            1 - (1 - confidence_level) / 2,
+                                            axis=4)  # 0.975
+        CI_widths = CIs[:, :, :, :, 1] - CIs[:, :, :, :, 0]
+        # CI_widths = - CIs[:, :, :, :, 0]
+        # print(CI_widths)
+
+        # For energy transfer comparisons
+        if len(models) > 1:
+            CIs_energy_transfer = np.full([len(Ms), len(Xs), len(Ys), 2],
+                                          np.nan)
+            CIs_energy_transfer[:, :, :, 0] = np.nanquantile(
+                lg_BF_vals_energy_transfer,
+                (1 - confidence_level) / 2, axis=3)  # 0.025
+            CIs_energy_transfer[:, :, :, 1] = np.nanquantile(
+                lg_BF_vals_energy_transfer,
+                1 - (1 - confidence_level) / 2, axis=3)  # 0.975
+            CI_widths_energy_transfer = CIs_energy_transfer[:, :, :, 1] \
+                                        - CIs_energy_transfer[:, :, :, 0]
 
     # %% Actual plotting
+    if len(models) == 1:
+        lg_BF_vals_plot = lg_BF_vals[0, :, :, :, :]
+        # median_simulation_time_hours_plot = median_simulation_time_hours[0, :, : , :]
+        plot_lg_BFs_plot = plot_lg_BFs[0, :, :, :]
+        CI_widths_plot = CI_widths[0, :, :, :]
+        underlying_mask = None
+    elif len(models) == 2:
+        lg_BF_vals_plot = lg_BF_vals_energy_transfer
+        # median_simulation_time_hours_plot = median_simulation_time_hours[0, :, :, :]
+        plot_lg_BFs_plot = copy.deepcopy(plot_lg_BFs_energy_transfer)
+        CI_widths_plot = copy.deepcopy(CI_widths_energy_transfer)
+
+        # print('Med', median_lg_BFs_plot)
+
+        # # Set to nan values for which the link has more evidence than either model
+        # median_lg_BFs_plot[bl_nolink] = np.nan
+        # CI_widths_plot[bl_nolink] = np.nan
+        underlying_mask = bl_nolink.astype(np.float64)  # True if no link
+        underlying_mask[~bl_nolink] = np.nan
+        underlying_mask = underlying_mask[ind_M, :, :].T
+    else:
+        raise ValueError("I don't know what to plot for this number of models.")
+
+    min_CI_width = np.floor(np.nanmin(CI_widths_plot))
+    max_CI_width = np.ceil(np.nanmax(CI_widths_plot))
+    # print('CI width outside', CI_widths_plot)
+
     for ind_M, M in enumerate(Ms):
-        real_trials = np.min(np.sum(~np.isnan(lg_BF_vals), axis=3), axis=(1, 2))
-        max_real_trials = np.max(np.sum(~np.isnan(lg_BF_vals), axis=3), axis=(1, 2))
+        real_trials = np.min(np.sum(~np.isnan(lg_BF_vals_plot), axis=3),
+                             axis=(1, 2))
+        max_real_trials = np.max(np.sum(~np.isnan(lg_BF_vals_plot), axis=3),
+                                 axis=(1, 2))
 
         Xs_plot, Ys_plot = np.meshgrid(Xs, Ys)
         full_title = f'trials={real_trials[ind_M]} ({max_real_trials[ind_M]:d}), '
@@ -374,7 +654,8 @@ def calculate_and_plot_contour_plot(
         lgB_levels = [-1, 0, 1]
 
         # LgB values
-        clims = np.array([-1, 1]) * np.ceil(np.nanmax(np.abs(median_lg_BFs)))
+        clims = np.array([-1, 1]) * np.ceil(np.nanmax(np.abs(plot_lg_BFs_plot)))
+        # todo levels calculation should be moved to contour plot. Not sure...
         if not np.all(np.isfinite(clims)):
             levels = None
         else:
@@ -384,8 +665,8 @@ def calculate_and_plot_contour_plot(
             figname = figname_base + f'_M={Ms[ind_M]:d}'
         else:
             figname = figname_base
-        contour_plot(fig_num=3 + 3 * ind_M, X=Xs_plot, Y=Ys_plot,
-                     Z=median_lg_BFs[ind_M, :, :].T,
+        contour_plot(X=Xs_plot, Y=Ys_plot,
+                     Z=plot_lg_BFs_plot[ind_M, :, :].T,
                      clims=clims,
                      levels=levels,
                      lgB_levels=lgB_levels,
@@ -394,8 +675,29 @@ def calculate_and_plot_contour_plot(
                      xlabel=xlabel, ylabel=ylabel,
                      title='Bayes factor\n' + full_title,
                      figname=figname,
-                     cmap='bwr'
+                     cmap='bwr',
+                     # underlying_mask= underlying_mask,
+                     clip=20,
                      )
+
+        # Plot the five color matrix if calculated
+        if len(models) == 2:
+            multi_model_comparison_plot(X=Xs_plot, Y=Ys_plot,
+                                        Z=five_color_matrix[ind_M, :, :].T,
+                                        clims=[-0.5, 7.5],
+                                        # levels=range(5),
+                                        lgB_levels=range(5),
+                                        # cb_label='Median $\mathrm{lg}B$',
+                                        xscale=xscale, yscale=yscale,
+                                        xlabel=xlabel, ylabel=ylabel,
+                                        # title='Bayes factor\n' + full_title,
+                                        figname=figname,
+                                        cmap='Set2',
+                                        # underlying_mask= underlying_mask,
+                                        # clip=20,
+                                        colorbar=True,
+                                        colorbar_ticks=range(4),
+                                        )
 
         # Confidence intervals
         if not np.all(np.isfinite([min_CI_width, max_CI_width])):
@@ -411,14 +713,16 @@ def calculate_and_plot_contour_plot(
                      xlabel=xlabel, ylabel=ylabel,
                      title='Confidence intervals\n' + full_title,
                      figname=figname + '_CI',
-                     cmap='Reds'
+                     cmap='Reds',
+                     underlying_mask=None,  # underlying_mask,
+                     clip=100,
                      )
 
         # Simulation time
         if plot_simulation_time:
             contour_plot(fig_num=3 + 2 + 3 * ind_M, X=Xs_plot, Y=Ys_plot,
                          Z=median_simulation_time_hours[ind_M, :, :].T,
-                         Z_lgB=median_lg_BFs[ind_M, :, :].T,
+                         Z_lgB=plot_lg_BFs_plot[ind_M, :, :].T,
                          lgB_levels=lgB_levels,
                          cb_label='Simulation time, secs',
                          xscale=xscale, yscale=yscale,
@@ -451,15 +755,21 @@ def get_five_color_matrix(median_lg_BFs: np.ndarray,
     #todo Make sure I want to calculate it on the medians.
 
     """
+    # Set the default value to inconclusive, and the non-calculated to nans
+    five_color_matrx = np.full_like(median_lg_BFs_energy_transfer, 0)
 
-    five_color_matrx = np.zeros_like(median_lg_BFs_energy_transfer, dtype=int)
+    five_color_matrx[np.isnan(median_lg_BFs[0, :, :, :])
+                     | np.isnan(median_lg_BFs[1, :, :, :])
+                     | np.isnan(median_lg_BFs_energy_transfer)
+                     ] = np.nan
+
     # The no-link model is favored if evidence for it is stronger than for
     # the other 2
     five_color_matrx[(median_lg_BFs[0, :, :, :] <= -CONFIDENCE_LEVEL_LG_B) &
                      (median_lg_BFs[1, :, :, :] <= -CONFIDENCE_LEVEL_LG_B)] \
         = NO_LINK_MODEL
 
-    # Energy transfer model is significant and the difference from the same
+    # Energy transfer model is significant and the difference from the same-
     # diffusivity model is significant
     five_color_matrx[
         (median_lg_BFs[0, :, :, :] >= CONFIDENCE_LEVEL_LG_B)
@@ -710,6 +1020,7 @@ def contour_plot_localized_eta12_v_gamma_energy_transfer_triple_test(
         angle=0,
         clip=10,
         print_MLE=False,
+        mesh_resolution=mesh_resolution,
 ):
     n1 = eta_default / dt
     n2 = eta_default / dt

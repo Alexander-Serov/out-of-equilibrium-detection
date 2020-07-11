@@ -38,7 +38,7 @@ for key, folder in data_folders.items():
     if hostname.startswith(key) and folder is not None:
         data_folder = folder
         break
-print(f'The results will be stored in {data_folder}.')
+print(f'The results will be stored in `{data_folder}`.')
 
 MLE_guess_file = 'MLE_guesses.pyc'
 stat_filename = 'statistics.dat'

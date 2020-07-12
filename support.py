@@ -30,7 +30,7 @@ data_folders = {
     'tars': scratch_folder,
     'maestro': scratch_folder,
     'onsager-dbc': Path(r'D:\calculated_data\out-of-equilibrium_detection'),
-    'Desktopik': Path(r'D:\calculated_data\out-of-equilibrium_detection'),  #todo
+    'Desktopik': Path(r'D:\calculated_data\out-of-equilibrium_detection'),  # todo
     '': Path('data')
 }
 
@@ -45,7 +45,7 @@ MLE_guess_file = 'MLE_guesses.pyc'
 stat_filename = 'statistics.dat'
 
 LOCK_TIMEOUT = 3  # s
-PICKLE_PROTOCOL=4
+PICKLE_PROTOCOL = 4
 
 
 def get_rotation_matrix(dr):
@@ -171,8 +171,7 @@ def save_data(dict_data, hash):
             pickle.dump(dict_data, file, protocol=PICKLE_PROTOCOL)
         return True
     except Exception as e:
-        logging.warning(
-            "Enoucntered unhandled exception while saving a data file: ", e)
+        logging.warning("Unable to save data to file: ", e)
         return False
 
 

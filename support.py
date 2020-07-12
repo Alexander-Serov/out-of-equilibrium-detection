@@ -44,6 +44,7 @@ MLE_guess_file = 'MLE_guesses.pyc'
 stat_filename = 'statistics.dat'
 
 LOCK_TIMEOUT = 3  # s
+PICKLE_PROTOCOL=4
 
 
 def get_rotation_matrix(dr):
@@ -166,7 +167,7 @@ def save_data(dict_data, hash):
     filename = data_folder / ('data_' + hash + '.pyc')
     try:
         with open(filename, 'wb') as file:
-            pickle.dump(dict_data, file, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(dict_data, file, protocol=PICKLE_PROTOCOL)
         return True
     except Exception as e:
         logging.warning(
@@ -260,7 +261,7 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link,
             # Save to file
             temp_filename = filename + '_tmp'
             with open(temp_filename, 'wb') as file:
-                pickle.dump(MLE_guesses, file, pickle.HIGHEST_PROTOCOL)
+                pickle.dump(MLE_guesses, file, protocol=PICKLE_PROTOCOL)
             try:
                 os.unlink(filename)
             except FileNotFoundError:

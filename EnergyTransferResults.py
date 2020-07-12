@@ -90,14 +90,14 @@ class EnergyTransferResults():
         """
         self.lg_BF_vals = calculate_and_plot_contour_plot(
             self.default_args_dict,
-            x_update_func=self.update_y,  # todo why flipped? because of matrix
-            y_update_func=self.update_x,  # representation, right?
+            x_update_func=self.update_x,
+            y_update_func=self.update_y,
             trials=self.trials,
             Ms=self.Ms,
             mesh_resolution_x=self.mesh_resolution,
             mesh_resolution_y=self.mesh_resolution,
-            xlabel=self.y_label,
-            ylabel=self.x_label,
+            xlabel=self.x_label,
+            ylabel=self.y_label,
             title=self.title,
             x_range=self.x_range,
             y_range=self.y_range,

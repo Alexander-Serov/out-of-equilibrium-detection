@@ -129,7 +129,7 @@ def hash_from_dictionary(parameters, dim=2, use_model=False):
 def load_data(hash):
     """Load a data dictionary from a pickle file"""
     filename = 'data_' + hash + '.pyc'
-    filepath = os.path.join(data_folder, filename)
+    filepath = data_folder / filename
     dict_data, loaded = {}, False
 
     try:
@@ -149,7 +149,7 @@ def load_data(hash):
 
 def delete_data(hash):
     """Delete a pickle file"""
-    filename = os.path.join(data_folder, 'data_' + hash + '.pyc')
+    filename = data_folder / ('data_' + hash + '.pyc')
     try:
         os.unlink(filename)
         print(f'Deleted hash {hash}')
@@ -161,10 +161,9 @@ def delete_data(hash):
 def save_data(dict_data, hash):
     """Write dict_data to a pickle file"""
 
-    if not os.path.exists(data_folder):
-        os.makedirs(data_folder)
+    data_folder.mkdir(parents=True, exist_ok=True)
 
-    filename = os.path.join(data_folder, 'data_' + hash + '.pyc')
+    filename = data_folder / ('data_' + hash + '.pyc')
     try:
         with open(filename, 'wb') as file:
             pickle.dump(dict_data, file, pickle.HIGHEST_PROTOCOL)

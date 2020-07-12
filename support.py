@@ -30,7 +30,7 @@ data_folders = {
     'tars': scratch_folder,
     'maestro': scratch_folder,
     'onsager-dbc': Path(r'D:\calculated_data\out-of-equilibrium_detection'),
-    '': 'data'
+    '': Path('data')
 }
 
 hostname = socket.gethostname()

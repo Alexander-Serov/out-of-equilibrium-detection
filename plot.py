@@ -315,6 +315,10 @@ def multi_model_comparison_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
                                 clip=None,
                                 colorbar: bool = True,
                                 colorbar_ticks=None, ):
+    if np.all(np.isnan(Z)):
+        print('No data available yet.')
+        return
+
     cmap_name = 'Set2'
     cmap_len = int(np.max(Z)) + 1
     cmap = plt.get_cmap(cmap, cmap_len)
@@ -485,10 +489,9 @@ def calculate_and_plot_contour_plot(
                         for ind_x, x in enumerate(Xs):
                             x_update_func(args_dict, x)
 
-                            lg_BF_vals[
-                                ind_model, ind_M, ind_x, ind_y, trial], ln_evidence_with_link, \
-                            ln_evidence_free, loaded, _hash, simulation_time[
-                                ind_model, ind_M, ind_x, ind_y, trial], traj = \
+                            lg_BF_vals[ind_model, ind_M, ind_x, ind_y, trial], \
+                            ln_evidence_with_link, ln_evidence_free, loaded, _hash, \
+                            simulation_time[ind_model, ind_M, ind_x, ind_y, trial], traj = \
                                 simulate_and_calculate_Bayes_factor(**args_dict)
 
                             times = {'simulation_time': traj.simulation_time,
@@ -550,7 +553,7 @@ def calculate_and_plot_contour_plot(
 
         five_color_matrix = get_five_color_matrix(plot_lg_BFs,
                                                   plot_lg_BFs_energy_transfer)
-        print(five_color_matrix)
+        # print(five_color_matrix)
 
         if not np.any(five_color_matrix):
             warnings.warn(

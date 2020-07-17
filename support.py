@@ -22,14 +22,23 @@ import warnings
 from pathlib import Path
 from numpy import arctan, pi
 
-# from calculate import max_abs_lg_B_per_M
+# Select the right data location
+scratch_folder = os.environ.get('MYSCRATCH', None)
+if scratch_folder is not None:
+    scratch_folder = Path(scratch_folder) / 'out-of-equilibrium_detection'
+data_folders = {
+    'tars': scratch_folder,
+    'maestro': scratch_folder,
+    'onsager-dbc': Path(r'D:\calculated_data\out-of-equilibrium_detection'),
+    '': 'data'
+}
 
 hostname = socket.gethostname()
-data_folder = r'D:\calculated_data\out-of-equilibrium_detection'
-if hostname == 'onsager-dbc' or Path(data_folder).exists():
-    pass
-else:
-    data_folder = 'data'
+for key, folder in data_folders.items():
+    if hostname.startswith(key) and folder is not None:
+        data_folder = folder
+        break
+print(f'The results will be stored in {data_folder}.')
 
 MLE_guess_file = 'MLE_guesses.pyc'
 stat_filename = 'statistics.dat'
@@ -63,7 +72,8 @@ def locally_rotate_a_vector(dR, lag):
 
 
 def get_cluster_args_string(D1, D2, n1, n2, n12, dt, L0, M, model, trial=0,
-                            recalculate_trajectory=False, recalculate_BF=False, verbose=False,
+                            recalculate_trajectory=False, recalculate_BF=False,
+                            verbose=False,
                             rotation=True, angle=None, gamma=None, **kwargs):
     args_string = '--D1={D1:g} --D2={D2:g} --n1={n1:g} --n2={n2:g} --n12={n12:g}  --dt={dt:g} ' \
                   '--L={L0:g} --trial={trial:d} --M={M} --model={model}'.format(
@@ -160,7 +170,8 @@ def save_data(dict_data, hash):
             pickle.dump(dict_data, file, pickle.HIGHEST_PROTOCOL)
         return True
     except Exception as e:
-        logging.warning("Enoucntered unhandled exception while saving a data file: ", e)
+        logging.warning(
+            "Enoucntered unhandled exception while saving a data file: ", e)
         return False
 
 
@@ -187,7 +198,8 @@ class stopwatch:
         mins = int(np.floor(delta / 60))
         secs = delta - 60 * mins
         if self.verbose:
-            print(f'\n{self.name} completed in {mins} mins {round(secs, 0)} s.\n')
+            print(
+                f'\n{self.name} completed in {mins} mins {round(secs, 0)} s.\n')
 
 
 def stopwatch_dec(func):
@@ -203,7 +215,8 @@ def stopwatch_dec(func):
     return wrapper
 
 
-def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_update=False):
+def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link,
+                   force_update=False):
     """
     For a faster MLE search on the next occasion, save the previous result in a separate file. Naturally, this guess is the same across all trials.
 
@@ -232,7 +245,8 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
             except FileNotFoundError:
                 pass
 
-            if 'MLE_guesses' not in locals() or not isinstance(MLE_guesses, dict):
+            if 'MLE_guesses' not in locals() or not isinstance(MLE_guesses,
+                                                               dict):
                 MLE_guesses = {}
 
             # Update value if lower
@@ -254,12 +268,12 @@ def save_MLE_guess(hash_no_trial, MLE_guess, ln_posterior_value, link, force_upd
                 pass
             os.rename(temp_filename, filename)
 
-
         print('Saved MLE guess updated successfully.')
         return True
 
     except Timeout:
-        logging.warning("MLE guess file is locked by another instance. Skipping MLE guess save")
+        logging.warning(
+            "MLE guess file is locked by another instance. Skipping MLE guess save")
 
     except Exception as e:
         logging.warning('MLE guess save failed for unknown reason: ', e)
@@ -333,15 +347,18 @@ def load_all_MLE_guesses():
             except IOError as e:
                 logging.warning("MLE guess file does not exist: ", e)
             except EOFError:
-                logging.warning("Found a corrupt MLE guess file. The file will be rest.")
+                logging.warning(
+                    "Found a corrupt MLE guess file. The file will be rest.")
                 os.unlink(filename)
             except Exception as e:
-                logging.warning('Unhandled exception while loading MLE guesses: ', e)
+                logging.warning(
+                    'Unhandled exception while loading MLE guesses: ', e)
             if isinstance(MLE_guesses, dict):
                 success = True
 
     except Timeout:
-        logging.warning("MLE guess file is in use by another application. Skipping MLE guess load.")
+        logging.warning(
+            "MLE guess file is in use by another application. Skipping MLE guess load.")
 
     return MLE_guesses, success
 
@@ -357,7 +374,8 @@ def load_MLE_guess(hash_no_trial, link):
 
     if hash_no_trial is None:
         success = False
-        logging.warning('Empty hash provided. MLE guesses will not be loaded or saved')
+        logging.warning(
+            'Empty hash provided. MLE guesses will not be loaded or saved')
         return MLE_guess, old_ln_value, success
 
     hash_no_trial += f'{link:b}'
@@ -367,7 +385,8 @@ def load_MLE_guess(hash_no_trial, link):
     if success:
         if hash_no_trial in MLE_guesses.keys():
             MLE_guess, old_ln_value = MLE_guesses[hash_no_trial]
-            check_positive = np.all([MLE_guess[key] >= 0 for key in MLE_guess.keys()])
+            check_positive = np.all(
+                [MLE_guess[key] >= 0 for key in MLE_guess.keys()])
             success = check_positive
 
         else:
@@ -450,7 +469,8 @@ def find_inverse_gamma_parameters(interval, tau):
         raise RuntimeError('Wrong tau value supplied')
 
     def eqn(alpha, beta, x):
-        return -(alpha + 1) * np.log(x * (alpha + 1) / beta) - beta / x + (alpha + 1) - np.log(tau)
+        return -(alpha + 1) * np.log(x * (alpha + 1) / beta) - beta / x + (
+                alpha + 1) - np.log(tau)
 
     def solve_me(args):
         # print(args)
@@ -472,7 +492,8 @@ def find_inverse_gamma_function_scale(left, tau, alpha):
         raise RuntimeError('Wrong tau value supplied')
 
     def eqn(alpha, beta, x):
-        return -(alpha + 1) * np.log(x * (alpha + 1) / beta) - beta / x + (alpha + 1) - np.log(tau)
+        return -(alpha + 1) * np.log(x * (alpha + 1) / beta) - beta / x + (
+                alpha + 1) - np.log(tau)
 
     def solve_me(beta):
         # print(args)
@@ -488,7 +509,8 @@ def find_inverse_gamma_function_scale(left, tau, alpha):
         return np.nan
 
 
-def calculate_min_number_of_tries_with_a_binomial_model(stat_filename=stat_filename):
+def calculate_min_number_of_tries_with_a_binomial_model(
+        stat_filename=stat_filename):
     """
     The function reads and analyzed the statistics.dat file.
     We assume a binomial model of finding or not finding the maximum in cases where several outcomes are possible (p<1).
@@ -503,9 +525,13 @@ def calculate_min_number_of_tries_with_a_binomial_model(stat_filename=stat_filen
     stats = pd.read_csv(stat_filename, sep='\t')
     # print(stats)
     for link in [0, 1]:
-        filtered = stats[(stats['Link presence'] == link) & (stats['Fraction'] < 1)].sum(axis=0)
+        filtered = stats[
+            (stats['Link presence'] == link) & (stats['Fraction'] < 1)].sum(
+            axis=0)
         if len(filtered) > 0:
-            p = filtered['No of similar function values in MLE search results'] / filtered['Tries']
+            p = filtered[
+                    'No of similar function values in MLE search results'] / \
+                filtered['Tries']
             min_N = np.log(1 - conf_level) / np.log(1 - p)
             print(
                 f'Minimum number of tries to find a minimum with {conf_level * 100:.0f}% with link={link} is {min_N:.1f}')
@@ -520,7 +546,8 @@ if __name__ == "__main__":
 
 
     def test(beta=0.11683992564378747, alpha=2, x=0.01):
-        return beta ** alpha / gamma(alpha) * x ** (-alpha - 1) * np.exp(-beta / x)
+        return beta ** alpha / gamma(alpha) * x ** (-alpha - 1) * np.exp(
+            -beta / x)
 
 
     test(x=0.01)

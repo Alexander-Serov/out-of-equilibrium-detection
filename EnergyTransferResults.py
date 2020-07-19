@@ -24,6 +24,8 @@ class EnergyTransferResults():
                  verbose=False,
                  recalculate_BF=False,
                  recalculate_trajectory=False,
+                 xscale='log',
+                 yscale='log',
                  ):
         """Store simulation parameters.
 
@@ -52,6 +54,8 @@ class EnergyTransferResults():
         self.x_label = x_label
         self.x_range = x_range
         self.update_x = update_x
+        self.x_scale = xscale
+        self.y_scale = yscale
         self.y_label = y_label
         self.y_range = y_range
         self.update_y = update_y
@@ -81,7 +85,7 @@ class EnergyTransferResults():
                                   }
         self.lg_BF_vals = None
 
-    def run(self):
+    def run(self, **kwargs):
         """Perform/schedule calculations with and without a link.
 
         Returns
@@ -98,9 +102,11 @@ class EnergyTransferResults():
             mesh_resolution_y=self.mesh_resolution,
             xlabel=self.x_label,
             ylabel=self.y_label,
-            title=self.title,
             x_range=self.x_range,
             y_range=self.y_range,
+            xscale=self.x_scale,
+            yscale=self.y_scale,
+            title=self.title,
             cluster=self.cluster,
             verbose=self.verbose,
             figname_base=self.figname_base,
@@ -108,4 +114,5 @@ class EnergyTransferResults():
             clip=self.clip,
             print_MLE=self.print_MLE,
             statistic=self.statistic,
+            **kwargs,
         )

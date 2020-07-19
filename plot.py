@@ -354,8 +354,8 @@ def multi_model_comparison_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
                        )
     #                    antialiased=True)#, norm=norm)
 
-    plt.xscale('log')
-    plt.yscale('log')
+    plt.xscale(xscale)
+    plt.yscale(yscale)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.colorbar(im, ax=ax, ticks=np.arange(0, cmap_len, 1), format=fmt)

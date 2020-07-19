@@ -320,7 +320,7 @@ def multi_model_comparison_plot(X, Y, Z, Z_lgB=None, fig_num=1, clims=None,
         return
 
     cmap_name = 'Set2'
-    cmap_len = int(np.max(Z)) + 1
+    cmap_len = int(np.nanmax(Z)) + 1
     cmap = plt.get_cmap(cmap, cmap_len)
     # if cmap_len > 4:
     #     cmap[4], cmap[2] = cmap[2], cmap[4]

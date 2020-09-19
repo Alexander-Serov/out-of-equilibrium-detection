@@ -118,7 +118,14 @@ class EnergyTransferResults:
 
         # Create a dictionary that will be used for expanding plot titles
         self.plot_title_values_dict = copy.deepcopy(self.default_args_dict)
-        self.plot_title_values_dict.update({"eta1": eta_default, "eta2": eta_default})
+        self.plot_title_values_dict.update(
+            {
+                "eta1": eta_default,
+                "eta2": eta_default,
+                "eta12": eta12_default,
+                "gamma": gamma_default,
+            }
+        )
 
         # Substitute the placeholders in title with the default parameter values
         self.title = self.substitute_default_parameters(title)

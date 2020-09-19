@@ -86,7 +86,6 @@ class EnergyTransferResults:
         self.y_label = y_label
         self.y_range = y_range
         self.update_y = update_y
-        self.title = title
         self.figname_base = figname_base
         self.statistic = statistic
         self.clip = clip
@@ -116,6 +115,13 @@ class EnergyTransferResults:
             "rotation": self.rotation,
             "cluster": self.cluster,
         }
+
+        # Create a dictionary that will be used for expanding plot titles
+        self.plot_title_values_dict = copy.deepcopy(self.default_args_dict)
+        self.plot_title_values_dict.update({"eta1": eta_default, "eta2": eta_default})
+
+        # Substitute the placeholders in title with the default parameter values
+        self.title = self.substitute_default_parameters(title)
 
         # Calculate ranges
         if len(self.x_range) == 2:
@@ -332,3 +338,27 @@ class EnergyTransferResults:
             setattr(self, var_name, loaded)
 
         print(f"Figure cache loaded successfully. ")
+
+    def substitute_default_parameters(self, str_in: str) -> str:
+        """Substitute default parameter values in the input string if found.
+
+        Parameters
+        ----------
+        str_in
+            Input formatted string containing parameters to substitute in braces.
+
+        Returns
+        -------
+        str
+            Same string with format placeholders substituted with the default
+            parameter values.
+
+        """
+        # Create a subset of the substitutions that we need
+        substitutions = {
+            k: v for k, v in self.plot_title_values_dict.items() if k in str_in
+        }
+
+        str_out = str_in.format(**substitutions)
+
+        return str_out

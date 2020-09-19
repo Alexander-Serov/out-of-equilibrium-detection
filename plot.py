@@ -512,6 +512,11 @@ def calculate_and_plot_contour_plot(
 
 
     """
+    warnings.warn(
+        "This interface is deprecated. Consider using the new class interface.",
+        DeprecationWarning,
+    )
+
     if len(x_range) == 2:
         Xs = np.logspace(log10(x_range[0]), log10(x_range[1]), num=mesh_resolution_x)
     elif len(x_range) == 3:

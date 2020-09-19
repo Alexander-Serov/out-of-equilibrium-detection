@@ -429,6 +429,7 @@ def multi_model_comparison_plot(
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.colorbar(im, ax=ax, ticks=np.arange(0, cmap_len, 1), format=fmt)
+    plt.title(title)
 
     # Save
     if figname is not None and len(figname):

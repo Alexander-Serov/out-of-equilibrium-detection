@@ -7,8 +7,13 @@ from plot import (
     gamma_default,
 )
 
+JSON_INDENT = 2
+
 
 class EnergyTransferResults:
+    cache_folder = Path(".cache")
+    cache_folder.mkdir(exist_ok=True)
+
     def __init__(
         self,
         trials,
@@ -71,6 +76,10 @@ class EnergyTransferResults:
         self.figname_base = figname_base
         self.statistic = statistic
         self.clip = clip
+        self.cache_filename = (self.cache_folder / self.figname_base).with_suffix(
+            ".json"
+        )
+        self.vars_to_store = ["lg_BF_vals", "simulation_time", "full_time"]
 
         self.recalculate_BF = recalculate_BF
         self.models = {
@@ -126,3 +135,57 @@ class EnergyTransferResults:
             statistic=self.statistic,
             **kwargs,
         )
+
+    def save_cache(self):
+        """Caches the results for the given figure.
+        The cache file will be loaded before trying to load individual results.
+        """
+        results = {}
+        for var_name in self.vars_to_store:
+            results[var_name] = getattr(self, var_name).tolist()
+
+        with open(self.cache_filename, "w") as f:
+            json.dump(results, f, indent=JSON_INDENT)
+        print(f"Figure data cache updated successfully (`{self.cache_filename}`).\n")
+
+    def load_cache(self):
+        """Load the cache file."""
+        n_loaded = 0
+        try:
+            with open(self.cache_filename, "r") as f:
+                results = json.load(f)
+        except FileNotFoundError:
+            print(
+                f"Cache file not found at the expected location "
+                f"`{self.cache_filename}`.\n"
+                f"The results will be reloaded."
+            )
+            return
+
+        # Use the loaded results only if they have the expected size
+        if not all([var in results for var in self.vars_to_store]):
+            print(
+                "Cache found at `{self.cache_filename}`, but some variables were "
+                "missing from the cache.\n"
+                "The results will be reloaded."
+            )
+            return
+
+        if not all(
+            [
+                np.array(results[var]).shape == getattr(self, var).shape
+                for var in self.vars_to_store
+            ]
+        ):
+            print(
+                "Cache found `{self.cache_filename}`, but some of the variables have "
+                "different shape.\n"
+                "The results will be reloaded."
+            )
+            return
+
+        for var_name in self.vars_to_store:
+            loaded = np.array(results[var_name])
+            setattr(self, var_name, loaded)
+
+        print(f"Figure cache loaded successfully. ")

@@ -2129,7 +2129,7 @@ def plot_localization_dependence(
                             gamma=gamma,
                             dt=dt,
                             angle=angle,
-                            L=L,
+                            L=L0,
                             trial=trial,
                             M=M,
                             verbose=verbose,
@@ -2170,7 +2170,7 @@ def plot_localization_dependence(
                             gamma=gamma,
                             dt=dt,
                             angle=angle,
-                            L=L,
+                            L=L0,
                             trial=trial,
                             M=M,
                             verbose=verbose,
@@ -2259,7 +2259,8 @@ def plot_localization_dependence(
     plt.xlabel("$n_1/n_{12}$")  # '$n_1/n_2$' if particle == 1 else '$n_2/n_1$')
     plt.ylabel("Median $\mathrm{lg}(B)$")
     plt.title(
-        f"trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n12={n12:.1f}, \ndt={dt}, L={L}, rotation={rotation}"
+        f"trials={real_trials}, D1={D1:.2f}, D2={D2:.2f}, n12={n12:.1f}, \ndt={dt}, "
+        f"L={L0}, rotation={rotation}"
     )
 
     plt.legend(loc="best")

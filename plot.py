@@ -1071,7 +1071,12 @@ def calculate_and_plot_contour_plot_for_class(
         )
 
         Xs_plot, Ys_plot = np.meshgrid(Xs, Ys)
-        full_title = f"trials={real_trials[ind_M]} ({max_real_trials[ind_M]:d}), "
+        full_title = f"trials={real_trials[ind_M]}"
+        # Add expected number of trials if not all calculations have been completed yet
+        if real_trials[ind_M] < max_real_trials[ind_M]:
+            full_title += f"/{max_real_trials[ind_M]:d}, "
+        else:
+            full_title += ", "
         if put_M_in_title:
             full_title += f"M={Ms[ind_M]:d}, "
         full_title += title

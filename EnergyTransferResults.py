@@ -1,7 +1,18 @@
+import copy
+import json
+import warnings
+from pathlib import Path
+
+import numpy as np
+from numpy import log10
+from tqdm.auto import trange
+
+from calculate import simulate_and_calculate_Bayes_factor
 from plot import D2 as D2_default
 from plot import (
     L0,
-    calculate_and_plot_contour_plot,
+    arguments_file,
+    calculate_and_plot_contour_plot_for_class,
     eta12_default,
     eta_default,
     gamma_default,
@@ -166,14 +177,85 @@ class EnergyTransferResults:
         -------
 
         """
-        self.lg_BF_vals = calculate_and_plot_contour_plot(
+
+        args_dict = copy.deepcopy(self.default_args_dict)
+
+        cluster_counter = 0
+        loaded_new = False
+        with open(arguments_file, "a") as file:
+
+            for trial in trange(self.trials, desc="Loading/scheduling calculations"):
+                args_dict.update({"trial": trial})
+
+                for ind_M, M in enumerate(self.Ms):
+                    args_dict.update({"M": M})
+
+                    for ind_model, model in enumerate(self.models.values()):
+                        args_dict.update({"model": model})
+
+                        for ind_y, y in enumerate(self.Ys):
+                            self.update_y(args_dict, y)
+
+                            for ind_x, x in enumerate(self.Xs):
+                                self.update_x(args_dict, x)
+
+                                # Only try to load from disk if has not been loaded
+                                # before (including results found in the cache)
+                                if np.isnan(
+                                    self.lg_BF_vals[
+                                        ind_model, ind_M, ind_x, ind_y, trial
+                                    ]
+                                ):
+                                    (
+                                        self.lg_BF_vals[
+                                            ind_model, ind_M, ind_x, ind_y, trial
+                                        ],
+                                        ln_evidence_with_link,
+                                        ln_evidence_free,
+                                        loaded,
+                                        _hash,
+                                        self.simulation_time[
+                                            ind_model, ind_M, ind_x, ind_y, trial
+                                        ],
+                                        traj,
+                                    ) = simulate_and_calculate_Bayes_factor(**args_dict)
+                                    loaded_new = True
+                                    times = {
+                                        "simulation_time": traj.simulation_time,
+                                        "calculation_time_link": traj.calculation_time_link,
+                                        "calculation_time_no_link": traj.calculation_time_no_link,
+                                    }
+                                    self.full_time[
+                                        ind_model, ind_M, ind_x, ind_y, trial
+                                    ] = np.sum(list(times.values()))
+
+                                    if self.cluster and not loaded:
+                                        file.write(str(args_dict) + "\n")
+                                        cluster_counter += 1
+
+                                if self.print_MLE and trial == 0:
+                                    print(
+                                        "\nPrinting MLEs.\nArguments:\n",
+                                        repr(args_dict),
+                                    )
+                                    print("MLE with link:\t", traj.MLE_link)
+                                    print("MLE no link:\t", traj.MLE_link)
+                                    print("lgB for link:\t", traj.lgB)
+
+        if loaded_new and np.any(~np.isnan(self.lg_BF_vals)):
+            self.save_cache()
+
+        if self.cluster and self.verbose:
+            print("Warning: verbose was active")
+
+        self.lg_BF_vals = calculate_and_plot_contour_plot_for_class(
             self.default_args_dict,
             x_update_func=self.update_x,
             y_update_func=self.update_y,
             trials=self.trials,
             Ms=self.Ms,
-            mesh_resolution_x=self.mesh_resolution,
-            mesh_resolution_y=self.mesh_resolution,
+            mesh_resolution_x=self.mesh_resolution_x,
+            mesh_resolution_y=self.mesh_resolution_y,
             xlabel=self.x_label,
             ylabel=self.y_label,
             x_range=self.x_range,
@@ -188,6 +270,12 @@ class EnergyTransferResults:
             clip=self.clip,
             print_MLE=self.print_MLE,
             statistic=self.statistic,
+            lg_BF_vals=self.lg_BF_vals,
+            simulation_time=self.simulation_time,
+            full_time=self.full_time,
+            cluster_counter=cluster_counter,
+            Xs=self.Xs,
+            Ys=self.Ys,
             **kwargs,
         )
 

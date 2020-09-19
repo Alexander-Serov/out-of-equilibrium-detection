@@ -249,34 +249,24 @@ class EnergyTransferResults:
                                     print("lgB for link:\t", traj.lgB)
 
         if loaded_new and np.any(~np.isnan(self.lg_BF_vals)):
+            # Save if something new was loaded and at least one value is not nan
             self.save_cache()
 
         if self.cluster and self.verbose:
             print("Warning: verbose was active")
 
         self.lg_BF_vals = calculate_and_plot_contour_plot_for_class(
-            self.default_args_dict,
-            x_update_func=self.update_x,
-            y_update_func=self.update_y,
+            self.lg_BF_vals,
             trials=self.trials,
             Ms=self.Ms,
-            mesh_resolution_x=self.mesh_resolution_x,
-            mesh_resolution_y=self.mesh_resolution_y,
             xlabel=self.x_label,
             ylabel=self.y_label,
-            x_range=self.x_range,
-            y_range=self.y_range,
             xscale=self.x_scale,
             yscale=self.y_scale,
             title=self.title,
-            cluster=self.cluster,
-            verbose=self.verbose,
             figname_base=self.figname_base,
             models=self.models,
-            clip=self.clip,
-            print_MLE=self.print_MLE,
             statistic=self.statistic,
-            lg_BF_vals=self.lg_BF_vals,
             simulation_time=self.simulation_time,
             full_time=self.full_time,
             cluster_counter=cluster_counter,

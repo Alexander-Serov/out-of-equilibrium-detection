@@ -1,32 +1,40 @@
-import numpy as np
-
-from plot import eta_default, L0, gamma_default, eta12_default
 from plot import D2 as D2_default
-from plot import calculate_and_plot_contour_plot
+from plot import (
+    L0,
+    calculate_and_plot_contour_plot,
+    eta12_default,
+    eta_default,
+    gamma_default,
+)
 
 
-class EnergyTransferResults():
-    def __init__(self, trials,
-                 cluster, Ms,
-                 x_label,
-                 x_range,
-                 update_x,
-                 y_label,
-                 y_range,
-                 update_y,
-                 dt, angle,
-                 rotation,
-                 print_MLE=False, resolution=3,
-                 statistic='mean',
-                 title='',
-                 figname_base='figure',
-                 clip=10,
-                 verbose=False,
-                 recalculate_BF=False,
-                 recalculate_trajectory=False,
-                 xscale='log',
-                 yscale='log',
-                 ):
+class EnergyTransferResults:
+    def __init__(
+        self,
+        trials,
+        cluster,
+        Ms,
+        x_label,
+        x_range,
+        update_x,
+        y_label,
+        y_range,
+        update_y,
+        dt,
+        angle,
+        rotation,
+        print_MLE=False,
+        resolution=3,
+        statistic="mean",
+        title="",
+        figname_base="figure",
+        clip=10,
+        verbose=False,
+        recalculate_BF=False,
+        recalculate_trajectory=False,
+        xscale="log",
+        yscale="log",
+    ):
         """Store simulation parameters.
 
         Parameters
@@ -66,23 +74,25 @@ class EnergyTransferResults():
 
         self.recalculate_BF = recalculate_BF
         self.models = {
-            'with_eng_transfer': 'localized_different_D_detect_angle',
-            'no_eng_transfer': 'localized_same_D_detect_angle'}
+            "with_eng_transfer": "localized_different_D_detect_angle",
+            "no_eng_transfer": "localized_same_D_detect_angle",
+        }
 
-        self.default_args_dict = {'n1': eta_default / self.dt,
-                                  'n2': eta_default / self.dt,
-                                  'n12': eta12_default / self.dt,
-                                  'D1': gamma_default * D2_default,
-                                  'D2': D2_default,
-                                  'dt': self.dt,
-                                  'angle': angle,
-                                  'L0': L0,
-                                  'verbose': self.verbose,
-                                  'recalculate_trajectory': self.recalculate_trajectory,
-                                  'recalculate_BF': self.recalculate_BF,
-                                  'rotation': self.rotation,
-                                  'cluster': self.cluster,
-                                  }
+        self.default_args_dict = {
+            "n1": eta_default / self.dt,
+            "n2": eta_default / self.dt,
+            "n12": eta12_default / self.dt,
+            "D1": gamma_default * D2_default,
+            "D2": D2_default,
+            "dt": self.dt,
+            "angle": angle,
+            "L0": L0,
+            "verbose": self.verbose,
+            "recalculate_trajectory": self.recalculate_trajectory,
+            "recalculate_BF": self.recalculate_BF,
+            "rotation": self.rotation,
+            "cluster": self.cluster,
+        }
         self.lg_BF_vals = None
 
     def run(self, **kwargs):

@@ -301,6 +301,12 @@ class EnergyTransferResults:
             )
             return
 
+        def backup_old_cache():
+            # Backup the old file
+            backup = str(self.cache_filename) + ".bak"
+            self.cache_filename.replace(backup)
+            print(f"Old cache file backed up to `{backup}`.")
+
         # Use the loaded results only if they have the expected size
         if not all([var in results for var in self.vars_to_store]):
             print(
@@ -308,6 +314,7 @@ class EnergyTransferResults:
                 "missing from the cache.\n"
                 "The results will be reloaded."
             )
+            backup_old_cache()
             return
 
         if not all(
@@ -321,6 +328,7 @@ class EnergyTransferResults:
                 "different shape.\n"
                 "The results will be reloaded."
             )
+            backup_old_cache()
             return
 
         for var_name in self.vars_to_store:

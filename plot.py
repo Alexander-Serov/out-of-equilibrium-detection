@@ -863,6 +863,316 @@ def calculate_and_plot_contour_plot(
     return lg_BF_vals
 
 
+def calculate_and_plot_contour_plot_for_class(
+    lg_BF_vals,
+    simulation_time,
+    full_time,
+    cluster_counter,
+    Xs,
+    Ys,
+    trials=3,
+    Ms=(10,),
+    xlabel="x",
+    ylabel="y",
+    xscale="log",
+    yscale="log",
+    title=None,
+    figname_base=str(),
+    put_M_in_title=True,
+    plot_simulation_time=False,
+    models: dict = None,
+    statistic: str = "median",
+):
+    """
+
+    Parameters
+    ----------
+    #todo Add parameter description
+    yscale
+    xscale
+    ylabel
+    xlabel
+    Ys
+    Xs
+    cluster_counter
+    full_time
+    simulation_time
+    lg_BF_vals
+    clip : None or float, optional
+        If provided, clip the lg Bayes factor values at the given level of
+        absolute values.
+    trials
+    Ms
+    title
+    figname_base
+    put_M_in_title
+    plot_simulation_time
+    models : dict
+        Dictionary of the form `model_label`: full_moodel name specifying the models for which the calculations
+        will be performed. The model label may appear in the corresponding plots.
+    statistic : one of {'median', 'mean'}
+        Parameters defining how the Bayes factors for different trials will be combined before plotting.
+        Currently supports only 'median' and 'mean'.
+
+
+    Returns
+    -------
+
+    Notes
+    -------
+
+
+    """
+
+    # Special calculations for triple comparison
+    if (
+        len(models) > 1
+        and "with_eng_transfer" == list(models.keys())[0]
+        and "no_eng_transfer" == list(models.keys())[1]
+    ):
+        lg_BF_vals_energy_transfer = (
+            lg_BF_vals[0, :, :, :, :] - lg_BF_vals[1, :, :, :, :]
+        )
+
+    # %% Calculating means and CI over trials
+    if statistic == "median":
+        plot_lg_BFs = np.nanmedian(lg_BF_vals, axis=4)
+        if len(models) > 1:
+            plot_lg_BFs_energy_transfer = np.nanmedian(
+                lg_BF_vals_energy_transfer, axis=3
+            )
+    elif statistic == "mean":
+        plot_lg_BFs = np.nanmean(lg_BF_vals, axis=4)
+        if len(models) > 1:
+            plot_lg_BFs_energy_transfer = np.nanmean(lg_BF_vals_energy_transfer, axis=3)
+    else:
+        raise ValueError(f"Received unexpected statistic: {statistic}.")
+    median_simulation_time_hours = np.nanmedian(simulation_time, axis=(0, 4))
+    avg_time = np.nanmean(full_time)
+    count = np.sum(~np.isnan(full_time))
+    sum_hours = np.nansum(full_time) / 3600 / count * np.prod(full_time.shape)
+    around = "around " if count < np.prod(full_time.shape) else ""
+
+    if len(models) > 1:
+        bl_nolink = (plot_lg_BFs[0, :, :, :] < 0) & (plot_lg_BFs[1, :, :, :] < 0)
+
+        five_color_matrix = get_five_color_matrix(
+            plot_lg_BFs, plot_lg_BFs_energy_transfer
+        )
+
+        if not np.any(five_color_matrix):
+            warnings.warn(
+                "No results for the moment. Plotting a dummy five-colors matrix."
+            )
+            five_color_matrix = np.array(
+                [
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [3, 1, 1, 1, 1, 1, 1, 1, 1],
+                    [2, 2, 2, 1, 1, 3, 4, 4, 4],
+                    [2, 2, 3, 1, 3, 4, 2, 2, 2],
+                    [2, 2, 4, 1, 3, 2, 2, 2, 2],
+                    [2, 2, 2, 1, 3, 2, 2, 2, 2],
+                    [2, 2, 2, 1, 3, 2, 2, 2, 2],
+                ]
+            )
+            five_color_matrix = five_color_matrix[np.newaxis, ...]
+            Xs = np.array(
+                [
+                    1.00000000e-03,
+                    4.21696503e-03,
+                    1.77827941e-02,
+                    7.49894209e-02,
+                    3.16227766e-01,
+                    1.33352143e00,
+                    5.62341325e00,
+                    2.37137371e01,
+                    1.00000000e02,
+                ]
+            )
+            Ys = np.array(
+                [
+                    1.00000000e-02,
+                    3.16227766e-02,
+                    1.00000000e-01,
+                    3.16227766e-01,
+                    1.00000000e00,
+                    3.16227766e00,
+                    1.00000000e01,
+                    3.16227766e01,
+                    1.00000000e02,
+                ]
+            )
+
+    if not np.isnan(avg_time):
+        quantiles = [0, 0.5 - 0.95 / 2, 0.5, 0.5 + 0.95 / 2, 1]
+        print(
+            f"On average, it took {avg_time / 60:.1f} min to calculate each of "
+            f"the {count:d} recorded points.",
+            f"Calculation of the whole plot ({np.prod(full_time.shape)} points) takes {around}"
+            f"{sum_hours:.1f} hours "
+            f"of CPU time or {around}{sum_hours / 2000:.1f} hours ({around}"
+            f"{sum_hours / 2000 / 24:.1f} days) on 2000 CPUs.",
+            f"Individual calculation time quantiles {quantiles}: "
+            f"{np.nanquantile(full_time, quantiles) / 3600} h",
+            sep="\n",
+        )
+    print(f"{cluster_counter} calculations scheduled for the cluster")
+
+    if trials > 1:
+        CIs = np.full([len(models), len(Ms), len(Xs), len(Ys), 2], np.nan)
+        CIs[:, :, :, :, 0] = np.nanquantile(  # 0.025
+            lg_BF_vals, (1 - confidence_level) / 2, axis=4
+        )
+        CIs[:, :, :, :, 1] = np.nanquantile(  # 0.975
+            lg_BF_vals, 1 - (1 - confidence_level) / 2, axis=4
+        )
+        CI_widths = CIs[:, :, :, :, 1] - CIs[:, :, :, :, 0]
+
+        # For energy transfer comparisons
+        if len(models) > 1:
+            CIs_energy_transfer = np.full([len(Ms), len(Xs), len(Ys), 2], np.nan)
+            CIs_energy_transfer[:, :, :, 0] = np.nanquantile(
+                lg_BF_vals_energy_transfer, (1 - confidence_level) / 2, axis=3
+            )  # 0.025
+            CIs_energy_transfer[:, :, :, 1] = np.nanquantile(
+                lg_BF_vals_energy_transfer, 1 - (1 - confidence_level) / 2, axis=3
+            )  # 0.975
+            CI_widths_energy_transfer = (
+                CIs_energy_transfer[:, :, :, 1] - CIs_energy_transfer[:, :, :, 0]
+            )
+        else:
+            CI_widths_energy_transfer = None
+
+    # %% Actual plotting
+    if len(models) == 1:
+        lg_BF_vals_plot = lg_BF_vals[0, :, :, :, :]
+        # median_simulation_time_hours_plot = median_simulation_time_hours[0, :, : , :]
+        plot_lg_BFs_plot = plot_lg_BFs[0, :, :, :]
+        CI_widths_plot = CI_widths[0, :, :, :]
+    elif len(models) == 2:
+        lg_BF_vals_plot = lg_BF_vals_energy_transfer
+        plot_lg_BFs_plot = copy.deepcopy(plot_lg_BFs_energy_transfer)
+        CI_widths_plot = copy.deepcopy(CI_widths_energy_transfer)
+
+        underlying_mask = bl_nolink.astype(np.float64)  # True if no link
+        underlying_mask[~bl_nolink] = np.nan
+    else:
+        raise ValueError("I don't know what to plot for this number of models.")
+
+    # min_CI_width = np.floor(np.nanmin(CI_widths_plot))
+    # max_CI_width = np.ceil(np.nanmax(CI_widths_plot))
+
+    for ind_M, M in enumerate(Ms):
+        real_trials = np.min(np.sum(~np.isnan(lg_BF_vals_plot), axis=3), axis=(1, 2))
+        max_real_trials = np.max(
+            np.sum(~np.isnan(lg_BF_vals_plot), axis=3), axis=(1, 2)
+        )
+
+        Xs_plot, Ys_plot = np.meshgrid(Xs, Ys)
+        full_title = f"trials={real_trials[ind_M]} ({max_real_trials[ind_M]:d}), "
+        if put_M_in_title:
+            full_title += f"M={Ms[ind_M]:d}, "
+        full_title += title
+        lgB_levels = [-1, 0, 1]
+
+        # LgB values
+        clims = np.array([-1, 1]) * np.ceil(np.nanmax(np.abs(plot_lg_BFs_plot)))
+        # todo levels calculation should be moved to contour plot. Not sure...
+        if not np.all(np.isfinite(clims)):
+            levels = None
+        else:
+            levels = np.arange(clims[0], clims[1] + 1, 1)
+
+        if put_M_in_title:
+            figname = figname_base + f"_M={Ms[ind_M]:d}"
+        else:
+            figname = figname_base
+        contour_plot(
+            X=Xs_plot,
+            Y=Ys_plot,
+            Z=plot_lg_BFs_plot[ind_M, :, :].T,
+            clims=clims,
+            levels=levels,
+            lgB_levels=lgB_levels,
+            cb_label="Median $\mathrm{lg}B$",
+            xscale=xscale,
+            yscale=yscale,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            title="Bayes factor\n" + full_title,
+            figname=figname,
+            cmap="bwr",
+            clip=20,
+        )
+
+        # Plot the five color matrix if calculated
+        if len(models) == 2:
+            multi_model_comparison_plot(
+                X=Xs_plot,
+                Y=Ys_plot,
+                Z=five_color_matrix[ind_M, :, :].T,
+                clims=[-0.5, 7.5],
+                lgB_levels=range(5),
+                # cb_label='Median $\mathrm{lg}B$',
+                xscale=xscale,
+                yscale=yscale,
+                xlabel=xlabel,
+                ylabel=ylabel,
+                title="Preferred model\n" + full_title,
+                figname=figname,
+                cmap="Set2",
+                colorbar=True,
+                colorbar_ticks=range(4),
+            )
+
+        # # Confidence intervals
+        # if not np.all(np.isfinite([min_CI_width, max_CI_width])):
+        #     levels = None
+        # else:
+        #     levels = np.arange(min_CI_width, max_CI_width + 1, 1)
+
+        contour_plot(
+            fig_num=3 + 1 + 3 * ind_M,
+            X=Xs_plot,
+            Y=Ys_plot,
+            Z=CI_widths_plot[ind_M, :, :].T,
+            levels=None,
+            cb_label="$\mathrm{lg}B$, 95 \% CI width",
+            xscale=xscale,
+            yscale=yscale,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            title="Confidence intervals\n" + full_title,
+            figname=figname + "_CI",
+            cmap="Reds",
+            underlying_mask=None,
+            clip=100,
+        )
+
+        # Simulation time
+        if plot_simulation_time:
+            contour_plot(
+                fig_num=3 + 2 + 3 * ind_M,
+                X=Xs_plot,
+                Y=Ys_plot,
+                Z=median_simulation_time_hours[ind_M, :, :].T,
+                Z_lgB=plot_lg_BFs_plot[ind_M, :, :].T,
+                lgB_levels=lgB_levels,
+                cb_label="Simulation time, secs",
+                xscale=xscale,
+                yscale=yscale,
+                xlabel=xlabel,
+                ylabel=ylabel,
+                title="Simulation time\n" + full_title,
+                figname=None,
+                cmap="bwr",
+            )
+
+    return lg_BF_vals
+
+
 def get_five_color_matrix(
     median_lg_BFs: np.ndarray, median_lg_BFs_energy_transfer: np.ndarray
 ) -> np.ndarray:

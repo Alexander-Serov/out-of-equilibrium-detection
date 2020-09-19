@@ -1,0 +1,42 @@
+repos:
+- repo: https://github.com/hakancelik96/unimport
+  rev: 9a45494aba8d9f873d8d6104d60b824cba71ee05
+  hooks:
+    - id: unimport
+      args: [-r]
+-   repo: https://github.com/PyCQA/isort
+    rev: 5.5.2
+    hooks:
+    -   id: isort
+-   repo: https://github.com/ambv/black
+    rev: 20.8b1
+    hooks:
+    - id: black
+      args: [--safe, --quiet]
+- repo: https://github.com/dfm/black_nbconvert
+  rev: stable
+  hooks:
+  - id: black_nbconvert
+- repo: https://github.com/kynan/nbstripout
+  rev: master
+  hooks:
+    - id: nbstripout
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.2.3
+    hooks:
+    -   id: check-merge-conflict
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-json
+    -   id: check-yaml
+    -   id: check-xml
+#    -   id: flake8
+#        args: [--config=.flake8]
+#-   repo: local
+#    hooks:
+#    -   id: pylint
+#        name: pylint
+#        entry: pylint
+#        language: system
+#        types: [python]
+#        args: [--errors-only]

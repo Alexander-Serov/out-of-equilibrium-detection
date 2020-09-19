@@ -52,6 +52,8 @@ class EnergyTransferResults:
             values to correspond the given float value.
         update_y : Callable
             Same as `update_x` for the `y` axis.
+        x_range
+            Can be borders (a tuple of 2) or a borders with step (tuple of 3). #todo
 
         """
         self.trials = trials
@@ -62,7 +64,8 @@ class EnergyTransferResults:
         self.dt = dt
         self.angle = angle
         self.print_MLE = print_MLE
-        self.mesh_resolution = 2 ** resolution + 1
+        self.mesh_resolution_x = 2 ** resolution + 1
+        self.mesh_resolution_y = 2 ** resolution + 1
         self.rotation = rotation
         self.x_label = x_label
         self.x_range = x_range
@@ -102,7 +105,59 @@ class EnergyTransferResults:
             "rotation": self.rotation,
             "cluster": self.cluster,
         }
-        self.lg_BF_vals = None
+
+        # Calculate ranges
+        if len(self.x_range) == 2:
+            self.Xs = np.logspace(
+                log10(self.x_range[0]),
+                log10(self.x_range[1]),
+                num=self.mesh_resolution_x,
+            )
+        elif len(self.x_range) == 3:
+            self.Xs = np.arange(
+                self.x_range[0], self.x_range[1] + self.x_range[2], self.x_range[2]
+            )
+        else:
+            self.Xs = self.x_range
+
+        if len(self.y_range) == 2:
+            self.Ys = np.logspace(
+                log10(self.y_range[0]),
+                log10(self.y_range[1]),
+                num=self.mesh_resolution_y,
+            )
+        elif len(self.y_range) == 3:
+            self.Ys = np.arange(
+                self.y_range[0], self.y_range[1] + self.y_range[2], self.y_range[2]
+            )
+        else:
+            self.Ys = self.y_range
+
+        # Expand models
+        if self.models is None:
+            if "model" not in self.args_dict:
+                raise ValueError("`model` must be provided.")
+            else:
+                warnings.warn(
+                    "Consider using the new interface for supplying model information."
+                )
+                self.models = {
+                    self.default_args_dict["model"]: self.default_args_dict["model"]
+                }
+
+        # Initialize results arrays
+        self.results_shape = [
+            len(self.models),
+            len(self.Ms),
+            len(self.Xs),
+            len(self.Ys),
+            self.trials,
+        ]
+        self.lg_BF_vals = np.full(self.results_shape, np.nan)
+        self.simulation_time = np.empty_like(self.lg_BF_vals)
+        self.full_time = np.empty_like(self.lg_BF_vals)
+
+        self.load_cache()
 
     def run(self, **kwargs):
         """Perform/schedule calculations with and without a link.

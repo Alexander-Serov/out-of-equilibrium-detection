@@ -304,7 +304,7 @@ class EnergyTransferResults:
         # Use the loaded results only if they have the expected size
         if not all([var in results for var in self.vars_to_store]):
             print(
-                "Cache found at `{self.cache_filename}`, but some variables were "
+                f"Cache found at `{self.cache_filename}`, but some variables were "
                 "missing from the cache.\n"
                 "The results will be reloaded."
             )
@@ -317,7 +317,7 @@ class EnergyTransferResults:
             ]
         ):
             print(
-                "Cache found `{self.cache_filename}`, but some of the variables have "
+                f"Cache found `{self.cache_filename}`, but some of the variables have "
                 "different shape.\n"
                 "The results will be reloaded."
             )

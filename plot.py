@@ -5,6 +5,7 @@ import copy
 import logging
 import os
 import warnings
+from typing import Tuple
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -39,6 +40,8 @@ M_default = 1000
 dt = 0.05  # s
 D2 = 0.1  # um^2/s, this is the default value
 L0 = 20  # um
+
+DEFAULT_VALUES_DOT_SIZE = 15
 
 # Color values and confidence levels for the 5-color matrix
 CONFIDENCE_LEVEL_LG_B = 1
@@ -378,6 +381,7 @@ def multi_model_comparison_plot(
     clip=None,
     colorbar: bool = True,
     colorbar_ticks=None,
+    default_values_dot: Tuple = None,
 ):
     if np.all(np.isnan(Z)):
         print("No data available yet.")
@@ -430,6 +434,10 @@ def multi_model_comparison_plot(
     plt.ylabel(ylabel)
     plt.colorbar(im, ax=ax, ticks=np.arange(0, cmap_len, 1), format=fmt)
     plt.title(title)
+
+    # Add a default values dot
+    if default_values_dot is not None:
+        plt.scatter(*default_values_dot, c="r", marker=".", s=DEFAULT_VALUES_DOT_SIZE)
 
     # Save
     if figname is not None and len(figname):
@@ -882,6 +890,7 @@ def calculate_and_plot_contour_plot_for_class(
     plot_simulation_time=False,
     models: dict = None,
     statistic: str = "median",
+    default_values_dot: Tuple = None,
 ):
     """
 
@@ -1130,6 +1139,7 @@ def calculate_and_plot_contour_plot_for_class(
                 cmap="Set2",
                 colorbar=True,
                 colorbar_ticks=range(4),
+                default_values_dot=default_values_dot,
             )
 
         # # Confidence intervals

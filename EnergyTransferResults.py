@@ -2,6 +2,7 @@ import copy
 import json
 import warnings
 from pathlib import Path
+from typing import Tuple
 
 import numpy as np
 from numpy import log10
@@ -19,6 +20,8 @@ from plot import (
 )
 
 JSON_INDENT = 2
+
+M_DEFAULT = 1000  # Default trajectory length
 
 
 class EnergyTransferResults:
@@ -50,6 +53,7 @@ class EnergyTransferResults:
         recalculate_trajectory=False,
         xscale="log",
         yscale="log",
+        default_values_dot: Tuple = None,
     ):
         """Store simulation parameters.
 
@@ -117,13 +121,14 @@ class EnergyTransferResults:
         }
 
         # Create a dictionary that will be used for expanding plot titles
-        self.plot_title_values_dict = copy.deepcopy(self.default_args_dict)
-        self.plot_title_values_dict.update(
+        self.default_values_dict_for_plot = copy.deepcopy(self.default_args_dict)
+        self.default_values_dict_for_plot.update(
             {
                 "eta1": eta_default,
                 "eta2": eta_default,
                 "eta12": eta12_default,
                 "gamma": gamma_default,
+                "M": M_DEFAULT,
             }
         )
 
@@ -156,6 +161,16 @@ class EnergyTransferResults:
             )
         else:
             self.Ys = self.y_range
+
+        # Substitute the default values to be added to the plot
+        self.default_values_dot = default_values_dot
+        if self.default_values_dot is not None:
+            self.default_values_dot = tuple(
+                [
+                    self.default_values_dict_for_plot[el]
+                    for el in self.default_values_dot
+                ]
+            )
 
         # Expand models
         if self.models is None:
@@ -279,6 +294,7 @@ class EnergyTransferResults:
             cluster_counter=cluster_counter,
             Xs=self.Xs,
             Ys=self.Ys,
+            default_values_dot=self.default_values_dot,
             **kwargs,
         )
 
@@ -361,7 +377,7 @@ class EnergyTransferResults:
         """
         # Create a subset of the substitutions that we need
         substitutions = {
-            k: v for k, v in self.plot_title_values_dict.items() if k in str_in
+            k: v for k, v in self.default_values_dict_for_plot.items() if k in str_in
         }
 
         str_out = str_in.format(**substitutions)

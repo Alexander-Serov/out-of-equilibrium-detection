@@ -284,10 +284,7 @@ def simulate_and_calculate_Bayes_factor(
             M=M,
             dt=dt,
             L0=L0,
-            trial=trial,
             angle=angle,
-            recalculate=recalculate_trajectory,
-            dry_run=cluster,
             model=model,
         )
         for link, mle in [

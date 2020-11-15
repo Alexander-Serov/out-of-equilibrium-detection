@@ -55,6 +55,7 @@ class EnergyTransferResults:
         xscale="log",
         yscale="log",
         default_values_dot: Tuple = None,
+        plot_3_color_version: bool = True,
     ):
         """Store simulation parameters.
 
@@ -70,6 +71,10 @@ class EnergyTransferResults:
             Same as `update_x` for the `y` axis.
         x_range
             Can be borders (a tuple of 2) or a borders with step (tuple of 3). #todo
+        plot_3_color_version
+            If True, also plot a 3-color version, where only "link", "no link" and
+            "inconclusive" are shown, i.e. "energy transfer" and "no energy transfer"
+            are merged into "link".
 
         """
         self.trials = trials
@@ -94,6 +99,7 @@ class EnergyTransferResults:
         self.figname_base = figname_base
         self.statistic = statistic
         self.clip = clip
+        self.plot_3_color_version = plot_3_color_version
         self.cache_filename = (self.cache_folder / self.figname_base).with_suffix(
             ".json"
         )
@@ -310,7 +316,7 @@ class EnergyTransferResults:
         if self.cluster and self.verbose:
             print("Warning: verbose was active")
 
-        self.lg_BF_vals = calculate_and_plot_contour_plot_for_class(
+        calculate_and_plot_contour_plot_for_class(
             self.lg_BF_vals,
             trials=self.trials,
             Ms=self.Ms,

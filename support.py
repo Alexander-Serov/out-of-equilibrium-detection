@@ -227,7 +227,7 @@ def stopwatch_dec(func):
     return wrapper
 
 
-def save_MLE_guess(
+def save_MLE_guess_old(
     hash_no_trial, MLE_guess, ln_posterior_value, link, force_update=False
 ):
     """
@@ -338,6 +338,82 @@ def save_MLE_guess(
     #         f'Log max value of the MLE guess increased from {old_ln_value:.3g} to {ln_posterior_value:.3g}')
     #
     # return success
+
+
+def get_mle_filename(true_params: dict) -> str:
+    """Store the provided MLE guess.
+
+    Parameters
+    ----------
+    true_params
+        Parameters of the simulation (true values and model).
+
+    Returns
+    -------
+    str
+        Get the filename containing the MLE guesses for the given true parameters.
+    """
+    ignore_keys = ["model", "link"]
+
+    true_params = copy.copy(true_params)
+
+    # Format the filename
+    keys = sorted([key for key in true_params if key not in ignore_keys])
+    filename = f"mle_guess_model=({true_params['model']})_link={true_params['link']}"
+    formatted = [f"_{key}=({true_params[key]:{FLOAT_FORMAT}})" for key in keys]
+    filename = filename + "".join(formatted) + ".json"
+
+    return filename
+
+
+def save_MLE_guess(true_params: dict, mle: dict, value: float):
+    """Store the provided MLE guess.
+
+    Parameters
+    ----------
+    true_params
+        Parameters of the simulation (true values and model).
+    mle
+        Found MLE.
+    value
+        Function value at the MLE.
+
+    """
+    filename = get_mle_filename(true_params)
+    filepath = data_folder / MLE_GUESSES_FOLDER / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load, append and sort
+    mle_guesses = load_mle_guesses(true_params)
+    mle_guesses.append([value, mle])
+    mle_guesses.sort(reverse=False)
+    mle_guesses = mle_guesses[: min(MLE_GUESSES_TO_KEEP, len(mle_guesses))]
+
+    # Save
+    with open(filepath, "w") as file:
+        json.dump(mle_guesses, file, indent=JSON_INDENT)
+
+
+def load_mle_guesses(true_params: dict) -> list:
+    """Load a list of MLE guesses for the given true parameters.
+    Parameters
+    ----------
+    true_params
+        Parameters of the simulation (true values and model).
+
+    Returns
+    -------
+    -   Previous best MLE guesses.
+        If no guesses found, returns an empty list.
+    """
+    filename = get_mle_filename(true_params)
+    filepath = data_folder / MLE_GUESSES_FOLDER / filename
+    if not filepath.exists():
+        return []
+
+    with open(filepath) as file:
+        mle = json.load(file)
+        return mle
 
 
 def load_all_MLE_guesses():

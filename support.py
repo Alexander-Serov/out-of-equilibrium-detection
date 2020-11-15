@@ -1,47 +1,38 @@
 """
-Support functions for the calculations that do not rely on a certain structure of the data
+Support functions for the calculations that do not rely on a certain structure of the
+data.
 """
+import copy
 import hashlib
+import json
 import logging
 import os
 import pickle
-import socket
 import time
-from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from filelock import FileLock, Timeout
-from numpy import arctan, pi
+from numpy import arctan, cos, pi, sin
 from scipy.optimize import root, root_scalar
 from scipy.special import gamma
 
 # Select the right data location
-scratch_folder = os.environ.get("MYSCRATCH", None)
-if scratch_folder is not None:
-    scratch_folder = Path(scratch_folder) / "out-of-equilibrium_detection"
-data_folders = {
-    "tars": scratch_folder,
-    "maestro": scratch_folder,
-    "onsager-dbc": Path(r"D:\calculated_data\out-of-equilibrium_detection"),
-    "Desktopik": Path(r"D:\calculated_data\out-of-equilibrium_detection"),  # todo
-    "": Path("data"),
-}
+from constants import (
+    FLOAT_FORMAT,
+    JSON_INDENT,
+    LOCK_TIMEOUT,
+    MLE_GUESSES_FOLDER,
+    MLE_GUESSES_TO_KEEP,
+    PICKLE_PROTOCOL,
+    MLE_guess_file,
+    data_folder,
+    stat_filename,
+)
 
-hostname = socket.gethostname()
-for key, folder in data_folders.items():
-    if hostname.startswith(key) and folder is not None:
-        data_folder = folder
-        break
 print(f"The results will be stored in `{data_folder}`.")
-
-MLE_guess_file = "MLE_guesses.pyc"
-stat_filename = "statistics.dat"
-
-LOCK_TIMEOUT = 3  # s
-PICKLE_PROTOCOL = 4
 
 
 def get_rotation_matrix(dr):
@@ -443,7 +434,7 @@ def save_number_of_close_values(link, val, tries, frac):
     return
 
 
-def set_figure_size(num, rows, page_width_frac, height_factor=1.0, clear=True):
+def set_figure_size(rows, page_width_frac, height_factor=1.0, clear=True, num=None):
     pagewidth_in = 6.85
     font_size = 8
     dpi = 100
@@ -469,7 +460,7 @@ def set_figure_size(num, rows, page_width_frac, height_factor=1.0, clear=True):
     # matplotlib.rcParams['ps.fonttype'] = 42
 
     # Create and return figure handle
-    fig = plt.figure(num, clear=clear)
+    fig = plt.figure(num=num, clear=clear)
 
     # Set figure size and dpi
     fig.set_dpi(dpi)

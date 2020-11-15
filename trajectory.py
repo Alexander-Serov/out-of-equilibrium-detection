@@ -150,7 +150,7 @@ class Trajectory:
                 self._names_no_link = ("D1",)
 
             elif model == "free_different_D":
-                raise NotImplemented()
+                raise NotImplementedError()
 
             elif model == "localized_same_D_detect_angle":
                 self._ln_likelihood_with_link = (

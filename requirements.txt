@@ -8,6 +8,8 @@ numdifftools
 numpy
 pandas
 pytest
+pytest-cov
+pytest-xdist
 scipy
 seaborn
 tqdm

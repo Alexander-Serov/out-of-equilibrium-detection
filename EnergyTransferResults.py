@@ -2,7 +2,7 @@ import copy
 import json
 import warnings
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Iterable, Tuple
 
 import numpy as np
 from numpy import log10
@@ -14,6 +14,7 @@ from plot import (
     L0,
     arguments_file,
     calculate_and_plot_contour_plot_for_class,
+    contour_plot,
     eta12_default,
     eta_default,
     gamma_default,
@@ -497,3 +498,112 @@ class EnergyTransferResults:
         str_out = str_in.format(**substitutions)
 
         return str_out
+
+    def plot_mle(self, link: bool, parameter: str, model: Any, clip: float = None):
+        """Plot a 2D map of the median of the maximum-likelihood estimates of the
+        posterior distribution.
+
+        Parameters
+        ----------
+        link
+            If True, plot the results from the link model.
+            Otherwise, use the no-link model.
+        parameter
+            Name of the parameter to plot.
+        model
+            Must be on of the keys of the models dictionary of the instance.
+        clip
+            If provided, clip the values at a given level.
+
+        Returns
+        -------
+        Nothing, but plots the figure.
+        """
+        for i, key in enumerate(self.models.keys()):
+            if key == model:
+                model_ind = i
+                break
+        else:
+            raise ValueError(f"Model `{model}` not found in this instance.")
+
+        # Prepare the data
+        data_dict = self.MLE_links if link else self.MLE_no_links
+        data_array = np.full(
+            (
+                len(self.Xs),
+                len(self.Ys),
+                self.trials,
+            ),
+            np.nan,
+        )
+        # print(list(data_dict.keys())[0])
+        for i_x, x in enumerate(self.Xs):
+            for i_y, y in enumerate(self.Ys):
+                for trial in range(self.trials):
+                    try:
+                        key = (model_ind, self.Ms[0], x, y, trial)
+                        data_array[i_x, i_y, trial] = data_dict[
+                            (model_ind, self.Ms[0], x, y, trial)
+                        ][parameter]
+                    except KeyError:
+                        # print(f'Key `{key}` not found.')
+                        pass
+        data_median = np.nanmedian(data_array, axis=2)
+
+        contour_plot(
+            X=self.Xs,
+            Y=self.Ys,
+            Z=data_median.T,
+            cb_label=f"{parameter}",
+            xscale=self.x_scale,
+            yscale=self.y_scale,
+            xlabel=self.x_label,
+            ylabel=self.y_label,
+            title=f"Median MLE for {parameter}, link={link}, model="
+            f"{model.replace('_', '-')}",
+            cmap="bwr",
+            clip=clip,
+        )
+
+    def plot_evidence(self, link: bool, model: Any, clip: float = None):
+        """Plot a 2D map of the mean of the evidence for the given
+        link status and model.
+
+        Parameters
+        ----------
+        link
+            If True, plot the results from the link model.
+            Otherwise, use the no-link model.
+        model
+            Must be on of the keys of the models dictionary of the instance.
+        clip
+            If provided, clip the values at a given level.
+
+        Returns
+        -------
+        Nothing, but plots the figure.
+        """
+        for i, key in enumerate(self.models.keys()):
+            if key == model:
+                model_ind = i
+                break
+        else:
+            raise ValueError(f"Model `{model}` not found in this instance.")
+
+        # Prepare the data
+        data_array = self.ln_evidence_with_links if link else self.ln_evidence_frees
+        data_mean = np.nanmean(data_array[model_ind, 0, :, :, :], axis=2)
+
+        contour_plot(
+            X=self.Xs,
+            Y=self.Ys,
+            Z=data_mean.T,
+            cb_label=f"Evidence",
+            xscale=self.x_scale,
+            yscale=self.y_scale,
+            xlabel=self.x_label,
+            ylabel=self.y_label,
+            title=f"Mean evidence for link={link}, model={model.replace('_', '-')}",
+            cmap="bwr",
+            clip=clip,
+        )

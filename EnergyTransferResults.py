@@ -339,11 +339,17 @@ class EnergyTransferResults:
 
     def collect_mle_guesses(self, **kwargs):
         """Extract mle guesses from already calculated files.
+        Needs to be scheduled for the cluster.
 
         Returns
         -------
 
         """
+        if not self.cluster:
+            raise NotImplementedError(
+                "MLE collection can only currently performed on the cluster."
+            )
+
         args_dict = copy.deepcopy(self.default_args_dict)
         args_dict["collect_mle"] = True
 
@@ -365,36 +371,8 @@ class EnergyTransferResults:
                             for ind_x, x in enumerate(self.Xs):
                                 self.update_x(args_dict, x)
 
-                                (
-                                    lg_bf,
-                                    ln_evidence_with_link,
-                                    ln_evidence_free,
-                                    loaded,
-                                    _hash,
-                                    self.simulation_time[
-                                        ind_model, ind_M, ind_x, ind_y, trial
-                                    ],
-                                    traj,
-                                ) = simulate_and_calculate_Bayes_factor(**args_dict)
-
-                                self.ln_evidence_with_links[
-                                    ind_model, ind_M, ind_x, ind_y, trial
-                                ] = ln_evidence_with_link
-                                self.ln_evidence_frees[
-                                    ind_model, ind_M, ind_x, ind_y, trial
-                                ] = ln_evidence_free
-
-                                # Get the MLE estimates
-                                if loaded:
-                                    self.MLE_links[
-                                        (ind_model, M, x, y, trial)
-                                    ] = traj.MLE_link
-                                    self.MLE_no_links[
-                                        (ind_model, M, x, y, trial)
-                                    ] = traj.MLE_no_link
-
                                 # Store arguments for cluster evaluation if loaded
-                                if self.cluster and loaded:
+                                if self.cluster:
                                     file.write(str(args_dict) + "\n")
                                     cluster_counter += 1
 

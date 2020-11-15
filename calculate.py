@@ -4,13 +4,19 @@ The part that concerns periodogram likelihoods calculation and fitting parameter
 """
 import ast
 
-import matplotlib.pyplot as plt
 import numpy as np
 from numpy import log
 from scipy.fftpack import fft
 
 from likelihood import get_MLE
-from support import delete_data, hash_from_dictionary, load_data, save_data, stopwatch
+from support import (
+    delete_data,
+    hash_from_dictionary,
+    load_data,
+    save_data,
+    save_MLE_guess,
+    stopwatch,
+)
 from trajectory import Trajectory
 
 max_abs_lg_B_per_M = 2
@@ -235,11 +241,20 @@ def simulate_and_calculate_Bayes_factor(
     true_args=None,
     cluster=False,
     rotation=True,
+    collect_mle=False,
     **kwargs
 ):
     """
     The function combines trajectory simulation and bayes factor calculation to be able to delegate
     the task to a computation cluster.
+
+    Parameters
+    ----------
+    collect_mle
+        If True, do not perform calculations, but just collect the MLE estimates for
+        points, for which they are available.
+        If dry_run, the collection will be performed on the cluster.
+        Otherwise - locally.
     """
     traj = Trajectory(
         D1=D1,
@@ -255,8 +270,38 @@ def simulate_and_calculate_Bayes_factor(
         recalculate=recalculate_trajectory,
         dry_run=cluster,
         model=model,
+        collect_mle=collect_mle,
     )
     loaded = False if np.isnan(traj.lgB) else True
+
+    if loaded and collect_mle:
+        true_params = dict(
+            D1=D1,
+            D2=D2,
+            n1=n1,
+            n2=n2,
+            n12=n12,
+            M=M,
+            dt=dt,
+            L0=L0,
+            trial=trial,
+            angle=angle,
+            recalculate=recalculate_trajectory,
+            dry_run=cluster,
+            model=model,
+        )
+        for link, mle in [
+            (True, traj.MLE_link),
+            (False, traj.MLE_no_link),
+        ]:
+            true_params["link"] = link
+            fun = -traj.get_ln_posterior(link)(**mle)
+
+            save_MLE_guess(
+                true_params=true_params,
+                mle=mle,
+                value=fun,
+            )
 
     return (
         traj.lgB,

@@ -46,7 +46,33 @@ class Trajectory:
         model="localized_different_D",
         dim=2,
         verbose=True,
+        collect_mle=False,
     ):
+        """
+
+        Parameters
+        ----------
+        D1
+        D2
+        n1
+        n2
+        n12
+        M
+        dt
+        L0
+        trial
+        angle
+        recalculate
+        recalculate_BF
+        dry_run
+        plot
+        model
+        dim
+        verbose
+        collect_mle
+            If True, do not perform calculations, but just collect the MLE estimates for
+            points, for which they are available.
+        """
 
         # Parameters for hash
         self.D1 = D1
@@ -61,6 +87,7 @@ class Trajectory:
         self.angle = angle
         self.model = model
         self.dim = dim
+        self.collect_mle = collect_mle
         self.parameters = {
             "D1": D1,
             "D2": D2,
@@ -233,8 +260,6 @@ class Trajectory:
     @property
     def t(self):
         if self._t is None:
-            # if self.dry_run:
-            #     return np.array([np.nan])
             self._simulate()
         return self._t
 
@@ -301,8 +326,8 @@ class Trajectory:
                 ]
                 return self._ln_model_evidence_with_link
 
-            # calculate
-            if self.dry_run:
+            # Calculate
+            if self.dry_run or self.collect_mle:
                 self._ln_model_evidence_with_link = np.nan
             else:
                 # print(self.model)
@@ -360,7 +385,7 @@ class Trajectory:
                 return self._MLE_link
 
             # calculate
-            if self.dry_run:
+            if self.dry_run or self.collect_mle:
                 self._MLE_link = {}
             else:
                 self.ln_model_evidence_with_link
@@ -391,7 +416,7 @@ class Trajectory:
                 return self._ln_model_evidence_no_link
 
             # calculate
-            if self.dry_run:
+            if self.dry_run or self.collect_mle:
                 self._ln_model_evidence_no_link = np.nan
             else:
                 # start = time.time()
@@ -439,7 +464,7 @@ class Trajectory:
                 return self._MLE_no_link
 
             # calculate
-            if self.dry_run:
+            if self.dry_run or self.collect_mle:
                 self._MLE_no_link = {}
             else:
                 self.ln_model_evidence_no_link
@@ -524,7 +549,7 @@ class Trajectory:
 
     def _save_data(self):
         # self._dict_data, _ = load_data(self._hash)
-        if not self.dry_run:
+        if not self.dry_run and not self.collect_mle:
             save_data(dict_data=self._dict_data, hash=self._hash)
 
     def _simulate(self):
@@ -622,7 +647,7 @@ class Trajectory:
         self._lgB = (
             self.ln_model_evidence_with_link - self.ln_model_evidence_no_link
         ) / np.log(10)
-        if not self.dry_run:
+        if not self.dry_run and not self.collect_mle:
             print(f"Bayes factor: {self._lgB}")
 
     def check_parameter_values(self):

@@ -96,7 +96,15 @@ class EnergyTransferResults:
         self.cache_filename = (self.cache_folder / self.figname_base).with_suffix(
             ".json"
         )
-        self.vars_to_store = ["lg_BF_vals", "simulation_time", "full_time"]
+        self.vars_to_store = [
+            "lg_BF_vals",
+            "simulation_time",
+            "full_time",
+            "ln_evidence_with_links",
+            "ln_evidence_frees",
+            "MLE_links",
+            "MLE_no_links",
+        ]
 
         self.recalculate_BF = recalculate_BF
         self.models = {
@@ -195,6 +203,10 @@ class EnergyTransferResults:
         self.lg_BF_vals = np.full(self.results_shape, np.nan)
         self.simulation_time = np.empty_like(self.lg_BF_vals)
         self.full_time = np.empty_like(self.lg_BF_vals)
+        self.ln_evidence_with_links = np.full_like(self.lg_BF_vals, np.nan)
+        self.ln_evidence_frees = np.full_like(self.lg_BF_vals, np.nan)
+        self.MLE_links = {}
+        self.MLE_no_links = {}
 
         self.load_cache()
 
@@ -235,9 +247,7 @@ class EnergyTransferResults:
                                     ]
                                 ):
                                     (
-                                        self.lg_BF_vals[
-                                            ind_model, ind_M, ind_x, ind_y, trial
-                                        ],
+                                        lg_bf,
                                         ln_evidence_with_link,
                                         ln_evidence_free,
                                         loaded,
@@ -247,7 +257,13 @@ class EnergyTransferResults:
                                         ],
                                         traj,
                                     ) = simulate_and_calculate_Bayes_factor(**args_dict)
+
                                     loaded_new = True
+
+                                    self.lg_BF_vals[
+                                        ind_model, ind_M, ind_x, ind_y, trial
+                                    ] = lg_bf
+
                                     times = {
                                         "simulation_time": traj.simulation_time,
                                         "calculation_time_link": traj.calculation_time_link,
@@ -256,6 +272,22 @@ class EnergyTransferResults:
                                     self.full_time[
                                         ind_model, ind_M, ind_x, ind_y, trial
                                     ] = np.sum(list(times.values()))
+
+                                    self.ln_evidence_with_links[
+                                        ind_model, ind_M, ind_x, ind_y, trial
+                                    ] = ln_evidence_with_link
+                                    self.ln_evidence_frees[
+                                        ind_model, ind_M, ind_x, ind_y, trial
+                                    ] = ln_evidence_free
+
+                                    # Get the MLE estimates
+                                    if loaded:
+                                        self.MLE_links[
+                                            (ind_model, M, x, y, trial)
+                                        ] = traj.MLE_link
+                                        self.MLE_no_links[
+                                            (ind_model, M, x, y, trial)
+                                        ] = traj.MLE_no_link
 
                                     if self.cluster and not loaded:
                                         file.write(str(args_dict) + "\n")
@@ -365,7 +397,14 @@ class EnergyTransferResults:
         """
         results = {}
         for var_name in self.vars_to_store:
-            results[var_name] = getattr(self, var_name).tolist()
+            var = getattr(self, var_name)
+            if isinstance(var, np.ndarray):
+                results[var_name] = var.tolist()
+            elif isinstance(var, dict):
+                converted = [{"key": key, "value": value} for key, value in var.items()]
+                results[var_name] = converted
+            else:
+                results[var_name] = var
 
         with open(self.cache_filename, "w") as f:
             json.dump(results, f, indent=JSON_INDENT)
@@ -405,10 +444,11 @@ class EnergyTransferResults:
             [
                 np.array(results[var]).shape == getattr(self, var).shape
                 for var in self.vars_to_store
+                if isinstance(getattr(self, var), np.ndarray)
             ]
         ):
             print(
-                f"Cache found `{self.cache_filename}`, but some of the variables have "
+                f"Cache found `{self.cache_filename}`, but some of the arrays have "
                 "different shape.\n"
                 "The results will be reloaded."
             )
@@ -416,7 +456,20 @@ class EnergyTransferResults:
             return
 
         for var_name in self.vars_to_store:
-            loaded = np.array(results[var_name])
+            # Process loaded values based on the expected type
+            if isinstance(getattr(self, var_name), np.ndarray):
+                loaded = np.array(results[var_name])
+            elif isinstance(getattr(self, var_name), dict):
+                loaded = {}
+                for el in results[var_name]:
+                    if not isinstance(  # Convert keys to tuples if necessary
+                        el["key"], str
+                    ) and isinstance(el["key"], Iterable):
+                        loaded[tuple(el["key"])] = el["value"]
+                    else:
+                        loaded[el["key"]] = el["value"]
+            else:
+                loaded = results[var_name]
             setattr(self, var_name, loaded)
 
         print(f"Figure cache loaded successfully. ")

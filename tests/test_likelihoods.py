@@ -1,6 +1,143 @@
-"""
-isort:skip_file
-"""
+import copy
+import json
+import time
+from pathlib import Path
+from typing import Iterable
+
+import numpy as np
+
+from likelihood import (
+    get_ln_likelihood_func_2_particles_x_link,
+    new_likelihood_2_particles_x_link_one_point,
+)
+
+# Load sample data
+energy_transfer_data_file = Path("tests/data/data-energy-transfer-example.json")
+with open(energy_transfer_data_file) as f:
+    energy_transfer_data = json.load(f)
+
+# Convert complex numbers and convert to numpy arrays
+def to_complex(x):
+    if isinstance(x, Iterable) and not isinstance(x, str):
+        return [to_complex(xi) for xi in x]
+    else:
+        return complex(x)
+
+
+energy_transfer_data["dRk"] = np.array(to_complex(energy_transfer_data["dRk"]))
+energy_transfer_data["k"] = np.array(energy_transfer_data["k"])
+
+ATOL_LOG = 1e-5
+
+
+def test_new_likelihood_2_particles_x_link_one_point():
+    """Get one-component likelihood."""
+
+    # -
+    # Test 1
+    ind = 1
+    d = energy_transfer_data  # shortcut
+    true_ln_likelihood = 17.44501495545533
+
+    ln_estimate = new_likelihood_2_particles_x_link_one_point(
+        dRk=tuple(d["dRk"][:, ind]),
+        k=d["k"][ind],
+        D1=d["D1"],
+        D2=d["D2"],
+        n1=d["n1"],
+        n2=d["n2"],
+        n12=d["n12"],
+        M=d["M"],
+        dt=d["dt"],
+        alpha=d["alpha"],
+    )
+    assert np.isclose(ln_estimate, true_ln_likelihood, atol=ATOL_LOG), (
+        f"One likelihood point test failed: {ln_estimate:.6g}"
+        f" != {true_ln_likelihood:.6g}"
+    )
+
+
+def test_get_ln_likelihood_func_2_particles_x_link():
+    """Get full likelihood of a model on a trajectory."""
+    d = copy.copy(energy_transfer_data)  # shortcut
+
+    # -
+    # Energy transfer case
+    expected_ln_likelihood = 5348.715008981629
+
+    ln_likelihood_func = get_ln_likelihood_func_2_particles_x_link(
+        ks=d["k"], M=d["M"], dt=d["dt"], dRks=d["dRk"]
+    )
+    ln_likelihood = ln_likelihood_func(
+        D1=d["D1"],
+        D2=d["D2"],
+        n1=d["n1"],
+        n2=d["n2"],
+        n12=d["n12"],
+        alpha=d["alpha"],
+    )
+    assert np.isclose(ln_likelihood, expected_ln_likelihood, atol=ATOL_LOG)
+
+    # Same D case
+    expected_ln_likelihood = 5348.834242269174
+
+    ln_likelihood_func = get_ln_likelihood_func_2_particles_x_link(
+        ks=d["k"],
+        M=d["M"],
+        dt=d["dt"],
+        dRks=d["dRk"],
+        same_D=True,
+    )
+    ln_likelihood = ln_likelihood_func(
+        D1=d["D1"],
+        n1=d["n1"],
+        n2=d["n2"],
+        n12=d["n12"],
+        alpha=d["alpha"],
+    )
+    assert np.isclose(ln_likelihood, expected_ln_likelihood, atol=ATOL_LOG)
+
+    # -
+    # Speed test
+    start = time.perf_counter()
+    N = 29
+    for n1 in np.logspace(
+        np.log10(0.21594704084413527), np.log10(21.594704084413527), N
+    ):
+        d.update({"n1": n1})
+        # -
+        # Energy transfer case
+        ln_likelihood_func = get_ln_likelihood_func_2_particles_x_link(
+            ks=d["k"], M=d["M"], dt=d["dt"], dRks=d["dRk"]
+        )
+        ln_likelihood_func(
+            D1=d["D1"],
+            D2=d["D2"],
+            n1=d["n1"],
+            n2=d["n2"],
+            n12=d["n12"],
+            alpha=d["alpha"],
+        )
+
+        # Same D case
+        ln_likelihood_func = get_ln_likelihood_func_2_particles_x_link(
+            ks=d["k"],
+            M=d["M"],
+            dt=d["dt"],
+            dRks=d["dRk"],
+            same_D=True,
+        )
+        ln_likelihood_func(
+            D1=d["D1"],
+            n1=d["n1"],
+            n2=d["n2"],
+            n12=d["n12"],
+            alpha=d["alpha"],
+        )
+    print(f"{N} likelihood calculations completed in {time.perf_counter() -start} s.")
+
+
+test_get_ln_likelihood_func_2_particles_x_link()
 
 # import unittest
 #
@@ -12,7 +149,6 @@ isort:skip_file
 # from likelihood import (get_ln_likelihood_func_2_particles_x_link,
 #                         get_ln_prior_func, get_MLE, get_sigma2_matrix_func,
 #                         likelihood_2_particles_x_link_one_point)
-
 
 # class tests(unittest.TestCase):
 

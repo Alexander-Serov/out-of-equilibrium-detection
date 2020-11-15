@@ -20,10 +20,15 @@ from scipy import integrate
 from scipy.optimize import minimize, root_scalar
 from scipy.special import erf, gammainc, gammaln, logsumexp
 
-from stopwatch import stopwatch
+from constants import ATOL
 
 # from plot import plot_periodogram
-from support import load_MLE_guess, save_MLE_guess, save_number_of_close_values
+from support import (
+    load_MLE_guess,
+    save_MLE_guess,
+    save_number_of_close_values,
+    stopwatch,
+)
 
 colorama.init()
 
@@ -34,6 +39,8 @@ SAME_MINIMA_STOP_CRITERION = (
     4  # How many similar minima should be found for the procedure to stop
 )
 MINIMA_CLOSE_ATOL = 0.1
+CACHE_SIZE = 2000  # Useless if shorter than the trajectory length
+N12_TOL = 1e-5  # Value below which n12 is considered 0
 
 # Prior parameters
 # max_expected_n = 100
@@ -45,7 +52,7 @@ max_expected_eta12 = 100
 max_expected_D = 10
 alpha_mu = 0
 alpha_sigma = np.pi / 4
-max_expected_L0 = 10  # unused?
+max_expected_L0 = 10  # only used if inferring link length
 
 
 # tries = 3  # 3
@@ -474,6 +481,191 @@ def likelihood_2_particles_x_link_one_point(
     return ln_prob
 
 
+@functools.lru_cache(maxsize=CACHE_SIZE)
+def get_k_independent_matrices(link, dt, n1=None, n2=None, n12=None):
+    """Regroups calculations independent of k, so that they may be cached."""
+    matrix_dict = {}
+    if link:
+        matrix_dict["g"] = g = np.sqrt((n1 - n2) ** 2 + 4 * n12 ** 2)
+        matrix_dict["lambdas"] = lambdas = (
+            np.array([-2 * n1, -2 * n2, -g - n1 - 2 * n12 - n2, g - n1 - 2 * n12 - n2])
+            / 2
+        )
+        matrix_dict["U"] = (
+            1
+            / g
+            * np.array(
+                [
+                    [0, 0, -2 * n12, 2 * n12],
+                    [2 * g, 0, 0, 0],
+                    [0, 0, g - n1 + n2, g + n1 - n2],
+                    [0, 2 * g, 0, 0],
+                ]
+            )
+            / 2
+        )
+
+        matrix_dict["Um1"] = (
+            1
+            / n12
+            * np.array(
+                [
+                    [0, 2 * n12, 0, 0],
+                    [0, 0, 0, 2 * n12],
+                    [-g - n1 + n2, 0, 2 * n12, 0],
+                    [g - n1 + n2, 0, 2 * n12, 0],
+                ]
+            )
+            / 2
+        )
+
+        cj = exp(lambdas * dt)
+        # prepend to make index shift exp(lambdas[j - 1] * dt)
+        cj = np.insert(cj, 0, np.nan)
+        matrix_dict["cj"] = cj
+    else:
+        matrix_dict["lambdas"] = lambdas = np.array([-n1, -n1, -n2, -n2])
+        cj = exp(lambdas * dt)
+        # prepend to make index shift exp(lambdas[j - 1] * dt)
+        cj = np.insert(cj, 0, np.nan)
+        matrix_dict["cj"] = cj
+
+    return matrix_dict
+
+
+@functools.lru_cache(maxsize=CACHE_SIZE)
+def Q_func(link, k, dt, M, n1=None, n2=None, n12=None):
+    matrix_dict = get_k_independent_matrices(link=link, dt=dt, n1=n1, n2=n2, n12=n12)
+    cj = matrix_dict["cj"]
+    lambdas = matrix_dict["lambdas"]
+    ck = exp(-2 * pi * 1j * k / M)
+
+    q_array = np.full((5, 5), complex(np.nan, np.nan))
+
+    for i in range(1, 5):
+        for j in range(1, 5):
+            r = (
+                M
+                * (cj[i] * cj[j] - 1)
+                / (lambdas[i - 1] + lambdas[j - 1])
+                / (cj[j] - ck)
+                / (cj[i] - 1 / ck)
+            )
+            q_array[i, j] = r if i != j else r.real
+
+    return q_array
+
+
+@functools.lru_cache(maxsize=CACHE_SIZE)
+def Gfull_func(link, k, dt, M, D1, D2, n1=None, n2=None, n12=None):
+    if link:
+
+        matrix_dict = get_k_independent_matrices(
+            link=link, dt=dt, n1=n1, n2=n2, n12=n12
+        )
+        g = matrix_dict["g"]
+        U = matrix_dict["U"]
+        Um1 = matrix_dict["Um1"]
+
+        Q = Q_func(link=link, k=k, dt=dt, M=M, n1=n1, n2=n2, n12=n12)
+
+        # %% Get Gamma covariance matrix
+        G1 = np.array(
+            [
+                [2 * D1 * Q[1, 1], 0, 0, 0],
+                [0, 2 * D2 * Q[2, 2], 0, 0],
+                [
+                    0,
+                    0,
+                    (D1 * (g + n1 - n2) + D2 * (g - n1 + n2)) * Q[3, 3] / g,
+                    -(D1 - D2) * (g + n1 - n2) * Q[3, 4] / g,
+                ],
+                [
+                    0,
+                    0,
+                    -(D1 - D2) * (g - n1 + n2) * Q[4, 3] / g,
+                    (D1 * (g - n1 + n2) + D2 * (g + n1 - n2)) * Q[4, 4] / g,
+                ],
+            ]
+        )
+        Gfull = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * U @ G1 @ Um1
+
+    else:
+        Q = Q_func(link=link, k=k, dt=dt, M=M, n1=n1, n2=n2)
+
+        # %% Get Gamma covariance matrix
+        G1 = np.array(
+            [
+                [2 * D1 * Q[1, 1], 0, 0, 0],
+                [0, 2 * D1 * Q[2, 2], 0, 0],
+                [0, 0, 2 * D2 * Q[3, 3], 0],
+                [0, 0, 0, 2 * D2 * Q[4, 4]],
+            ]
+        )
+        Gfull = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * G1
+
+    return Gfull
+
+
+@functools.lru_cache(maxsize=CACHE_SIZE)
+def get_rotation_matrix(alpha, both):
+    S = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
+    if both:
+        Z = np.zeros((2, 2))
+        S = np.block([[S, Z], [Z, S]])
+    return S
+
+
+@functools.lru_cache(maxsize=CACHE_SIZE)
+def calculate_G_P_Q(
+    link, k, dt, M, D1, D2, both, rotation, alpha, n1=None, n2=None, n12=None
+):
+    # %% Hard-code the eigenvalues and the diagonalizing matrix U
+    # Treat separately the case of n12=0 and n12>0
+
+    Gfull = Gfull_func(link=link, k=k, dt=dt, M=M, D1=D1, D2=D2, n1=n1, n2=n2, n12=n12)
+    Cfull = np.zeros((4, 4)) if k > 0 else Gfull
+
+    if not both:
+        G = Gfull[:2, :2]
+        C = Cfull[:2, :2]
+    else:
+        G, C = Gfull, Cfull
+
+    # If inferring the angle, rotate the G matrix
+    if rotation:
+        S = get_rotation_matrix(alpha=alpha, both=both)
+        G = S @ G @ S.T
+        C = S @ C @ S.T
+
+    P = G.conj() - C.conj().T @ np.linalg.inv(G) @ C
+
+    # Make some checks. Do not check all k because may be heavy
+    det_G = np.linalg.det(G)
+    det_P = np.linalg.det(P)
+    if k == 1:
+        # G is a non-negative definite matrix
+        det_G = det_G
+        if det_G < 0:
+            logging.warning(
+                f"Gamma matrix determinant is negative ({det_G} < 0)."
+                f" It is likely there is a problem in the code"
+            )
+        # P is a non-negative positive definite matrix
+        det_P = det_P
+        if det_P < 0:
+            logging.warning(
+                f"P matrix determinant is negative ({det_P} < 0)."
+                f" It is likely there is a problem in the code"
+            )
+
+    Q = np.block([[G, C], [C.conj(), G.conj()]])
+    Q_inv = np.linalg.inv(Q)
+
+    return det_G, det_P, Q_inv
+
+
+@functools.lru_cache(maxsize=CACHE_SIZE)
 def new_likelihood_2_particles_x_link_one_point(
     dRk,
     k=1,
@@ -511,217 +703,53 @@ def new_likelihood_2_particles_x_link_one_point(
     # - the Gamma and C matrices are not multiplied by
 
     """
-    ATOL = 1e-5
-    dRk = copy.copy(dRk)
-
-    # print('n12', n12)
-    # print(link, np.isclose(n12, 0), not np.isclose(n12, 0), link == (not np.isclose(n12, 0)),
-    #       link != np.isclose(n12, 0))
-
-    if np.any(np.array((D1, D2, n1, n2, n12)) < 0):
+    if any((a < 0 for a in [D1, D2, n1, n2, n12])):
         return ln_neg_infty
 
-    link = not np.isclose(n12, 0)  # "n12=0 is only allowed when link=False"
+    link = n12 > N12_TOL
 
-    # %% Hard-code the eigenvalues and the diagnolizing matrix U
-    # Treat separately the case of n12=0 and n12>0
-    ck = exp(-2 * pi * 1j * k / M)
-    if link:
-        g = np.sqrt((n1 - n2) ** 2 + 4 * n12 ** 2)
-        lambdas = (
-            np.array([-2 * n1, -2 * n2, -g - n1 - 2 * n12 - n2, g - n1 - 2 * n12 - n2])
-            / 2
-        )
-        U = (
-            1
-            / g
-            * np.array(
-                [
-                    [0, 0, -2 * n12, 2 * n12],
-                    [2 * g, 0, 0, 0],
-                    [0, 0, g - n1 + n2, g + n1 - n2],
-                    [0, 2 * g, 0, 0],
-                ]
-            )
-            / 2
-        )
-
-        # raise RuntimeError('Stop')
-
-        Um1 = (
-            1
-            / n12
-            * np.array(
-                [
-                    [0, 2 * n12, 0, 0],
-                    [0, 0, 0, 2 * n12],
-                    [-g - n1 + n2, 0, 2 * n12, 0],
-                    [g - n1 + n2, 0, 2 * n12, 0],
-                ]
-            )
-            / 2
-        )
-
-        # lambdas_test, U_test = np.linalg.eig(A)
-
-        def cj(j):
-            return exp(lambdas[j - 1] * dt)
-
-        def Q(i, j):
-            r = (
-                M
-                * (cj(i) * cj(j) - 1)
-                / (lambdas[i - 1] + lambdas[j - 1])
-                / (cj(j) - ck)
-                / (cj(i) - 1 / ck)
-            )
-            return r if i != j else r.real
-
-        # %% Get Gamma covariance matrix
-        G1 = np.array(
-            [
-                [2 * D1 * Q(1, 1), 0, 0, 0],
-                [0, 2 * D2 * Q(2, 2), 0, 0],
-                [
-                    0,
-                    0,
-                    (D1 * (g + n1 - n2) + D2 * (g - n1 + n2)) * Q(3, 3) / g,
-                    -(D1 - D2) * (g + n1 - n2) * Q(3, 4) / g,
-                ],
-                [
-                    0,
-                    0,
-                    -(D1 - D2) * (g - n1 + n2) * Q(4, 3) / g,
-                    (D1 * (g - n1 + n2) + D2 * (g + n1 - n2)) * Q(4, 4) / g,
-                ],
-            ]
-        )
-        Gfull = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * U @ G1 @ Um1
-
-        # print('U', U)
-        # print('Um1', Um1)
-
-    else:
-        # g = np.sqrt((n1 - n2)**2 + 2 * n12**2)
-        lambdas = np.array([-n1, -n1, -n2, -n2])
-
-        def cj(j):
-            return exp(lambdas[j - 1] * dt)
-
-        def Q(i, j):
-            r = (
-                M
-                * (cj(i) * cj(j) - 1)
-                / (lambdas[i - 1] + lambdas[j - 1])
-                / (cj(j) - ck)
-                / (cj(i) - 1 / ck)
-            )
-            return r if i != j else r.real
-
-        # %% Get Gamma covariance matrix
-        G1 = np.array(
-            [
-                [2 * D1 * Q(1, 1), 0, 0, 0],
-                [0, 2 * D1 * Q(2, 2), 0, 0],
-                [0, 0, 2 * D2 * Q(3, 3), 0],
-                [0, 0, 0, 2 * D2 * Q(4, 4)],
-            ]
-        )
-        Gfull = 2 * dt ** 2 * (1 - np.cos(2 * np.pi * k / M)) * G1
-
-    # if k == 1:
-    #     print(f'Q11(k=1) = {Q(1,1)}')
-
-    Cfull = np.zeros((4, 4)) if k > 0 else Gfull
-
-    if not both:
-        G = Gfull[:2, :2]
-        C = Cfull[:2, :2]
-    else:
-        G, C = Gfull, Cfull
-
-    # If inferring the angle, rotate the G matrix
-    if rotation:
-        S = np.array([[np.cos(alpha), -np.sin(alpha)], [np.sin(alpha), np.cos(alpha)]])
-        if both:
-            Z = np.zeros((2, 2))
-            S = np.block([[S, Z], [Z, S]])
-
-        # S = np.array([[np.cos(alpha), np.sin(alpha)],
-        #               [-np.sin(alpha), np.cos(alpha)]])
-        G = S @ G @ S.T
-        C = S @ C @ S.T
-
-    P = G.conj() - C.conj().T @ np.linalg.inv(G) @ C
-
-    # print(f'n12={n12}, full G={G}')
-    verbose = False
-    if verbose:
-        print(f"k={k}, n12={n12}")
-        print(f"det(full G)={np.linalg.det(Gfull)}")
-        print(f"eig(full G)={np.linalg.eigvals(Gfull)}")
-        print("Gfull ", Gfull)
-        # print('Hermitian: ',  G - G.conj().T)
-        print("U=", U)
-        print("Um1=", Um1)
-        print("U* Um1", U @ Um1)
-
-        print(f"det(G)={np.linalg.det(G)}")
-        print(f"eig(G)={np.linalg.eigvals(G)}")
-        print(f"det(G1)={np.linalg.det(G1)}")
-        print(f"eig(G1)={np.linalg.eigvals(G1)}")
-        print(f"G1={G1}")
-        # if k == 2:
-        raise RuntimeError("stop")
-
-    # Make some checks. Do not check all k because may be heavy
-    if k == 1:
-        # G is a non-negative definite matrix
-        det_G = np.linalg.det(G)
-        if det_G < 0:
-            logging.warning(
-                f"Gamma matrix determinant is negative ({det_G} < 0). It is likely there is a problem in the code"
-            )
-        # P is a non-negative positive definite matrix
-        det_P = np.linalg.det(P)
-        if det_P < 0:
-            logging.warning(
-                f"P matrix determinant is negative ({det_P} < 0). It is likely there is a problem in the code"
-            )
-
-    Q = np.block([[G, C], [C.conj(), G.conj()]])
-    Q_inv = np.linalg.inv(Q)
-
-    # dRk = dRk / (np.sqrt(M) * dt)
+    dRk = np.reshape(dRk, (-1, 1))
     vec_right = np.vstack([dRk, dRk.conj()])
     vec_left = vec_right.conj().T  # np.hstack([dRk.conj().T, dRk.T])
-    # print('dRk', dRk)
-    # print('vl', vec_left)
-    # print('vr', vec_right)
 
     # Calculate the log-likelihood
     d = dRk.shape[0]
     if d not in [2, 4]:
         raise RuntimeError(f"Unexpected vector dimension d={d}")
 
+    det_G, det_P, Q_inv = calculate_G_P_Q(
+        link=link,
+        k=k,
+        dt=dt,
+        M=M,
+        D1=D1,
+        D2=D2,
+        both=both,
+        rotation=rotation,
+        alpha=alpha,
+        n1=n1,
+        n2=n2,
+        n12=n12,
+    )
+
     ln_prob = (
         -d * log(pi)
-        - 1 / 2 * log(np.linalg.det(G))
-        - 1 / 2 * log(np.linalg.det(P))
+        - 1 / 2 * log(det_G)
+        - 1 / 2 * log(det_P)
         - 1 / 2 * vec_left @ Q_inv @ vec_right
     )
 
     if ln_prob.shape != (1, 1):
         logging.warning(
-            f"Log-likelihood matrix dimensions are incorrect. Check the supplied arrays. Got: {ln_prob}"
+            f"Log-likelihood matrix dimensions are incorrect."
+            f" Check the supplied arrays. Got: {ln_prob}"
         )
     ln_prob = ln_prob[0, 0]
 
     if abs(ln_prob.imag) > ATOL:
         logging.warning(
-            "The imaginary part of the real likelihood is larger than tolerance. There might be an error. Result: {ln_prob}".format(
-                ln_prob=ln_prob
-            )
+            "The imaginary part of the real likelihood is larger than tolerance."
+            " There might be an error. Result: {ln_prob}".format(ln_prob=ln_prob)
         )
     ln_prob = ln_prob.real
 
@@ -741,7 +769,7 @@ def get_ln_likelihood_func_2_particles_x_link(
         def ln_lklh(D1, D2, n1, n2, n12, alpha):
             ln_lklh_vals = [
                 new_likelihood_2_particles_x_link_one_point(
-                    dRk=dRks[:, i, np.newaxis],
+                    dRk=tuple(dRks[:, i]),
                     k=ks[i],
                     D1=D1,
                     D2=D2,
@@ -765,7 +793,7 @@ def get_ln_likelihood_func_2_particles_x_link(
         def ln_lklh(D1, n1, n2, n12, alpha):
             ln_lklh_vals = [
                 new_likelihood_2_particles_x_link_one_point(
-                    dRk=dRks[:, i, np.newaxis],
+                    dRk=tuple(dRks[:, i]),
                     k=ks[i],
                     D1=D1,
                     D2=D1,
@@ -821,7 +849,7 @@ def get_ln_likelihood_func_no_link(ks, M, dt, dRks=None, same_D=False, both=Fals
             def ln_lklh(D1, D2, n1, n2):
                 ln_lklh_vals = [
                     new_likelihood_2_particles_x_link_one_point(
-                        dRk=dRks[:, i, np.newaxis],
+                        dRk=tuple(dRks[:, i]),
                         k=ks[i],
                         D1=D1,
                         D2=D2,
@@ -845,7 +873,7 @@ def get_ln_likelihood_func_no_link(ks, M, dt, dRks=None, same_D=False, both=Fals
         def ln_lklh(D1, n1):
             ln_lklh_vals = [
                 new_likelihood_2_particles_x_link_one_point(
-                    dRk=dRks[:, i, np.newaxis],
+                    dRk=tuple(dRks[:, i]),
                     k=ks[i],
                     D1=D1,
                     D2=D2,
@@ -1316,7 +1344,7 @@ def get_ln_prior_func(dt, rotation=True):
     # Gamma distribution. Set scale by right boundary
 
     def eqn(z):
-        # Condition: decrease on the right border as compared to mode is tau
+        # Condition: decrease on the right border as compared to mode is tau (given k=2)
         return z * exp(1 - z) - tau
 
     sol = root_scalar(eqn, bracket=[1, 1e5])
@@ -1334,7 +1362,8 @@ def get_ln_prior_func(dt, rotation=True):
         # return alpha * log(beta) - gammaln(alpha) - (alpha + 1) * log(n) - beta / n
 
         # return -log(n) - 1 / 2 * log(2 * pi * sigma2_n) - (log(n) - mu_n)**2 / 2 / sigma2_n
-        # # inverse gamma distribution
+
+        # Gamma distribution
         return -gammaln(k) - k * log(theta) + (k - 1) * log(n) - n / theta
 
     def cdf_n_prior(n):

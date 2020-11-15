@@ -20,7 +20,7 @@ from scipy.optimize import root, root_scalar
 from scipy.special import gamma
 
 # Select the right data location
-from constants import (
+from constants_main import (
     FLOAT_FORMAT,
     JSON_INDENT,
     LOCK_TIMEOUT,

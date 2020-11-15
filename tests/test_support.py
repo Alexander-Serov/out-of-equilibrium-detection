@@ -2,7 +2,12 @@ import copy
 
 import numpy as np
 
-from constants import FLOAT_FORMAT, MLE_GUESSES_FOLDER, MLE_GUESSES_TO_KEEP, data_folder
+from constants_main import (
+    FLOAT_FORMAT,
+    MLE_GUESSES_FOLDER,
+    MLE_GUESSES_TO_KEEP,
+    data_folder,
+)
 from support import get_mle_filename, load_mle_guesses, save_MLE_guess
 
 true_params = {

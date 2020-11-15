@@ -20,7 +20,7 @@ from scipy import integrate
 from scipy.optimize import minimize, root_scalar
 from scipy.special import erf, gammainc, gammaln, logsumexp
 
-from constants import ATOL
+from constants_main import ATOL
 
 # from plot import plot_periodogram
 from support import (

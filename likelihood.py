@@ -20,27 +20,27 @@ from scipy import integrate
 from scipy.optimize import minimize, root_scalar
 from scipy.special import erf, gammainc, gammaln, logsumexp
 
-from constants_main import ATOL
+from constants_main import (
+    ATOL,
+    CACHE_SIZE,
+    MAX_MLE_SEARCH_TRIES,
+    MINIMA_CLOSE_ATOL,
+    N12_TOL,
+    SAME_MINIMA_STOP_CRITERION,
+    ln_neg_infty,
+)
 
 # from plot import plot_periodogram
 from support import (
-    load_MLE_guess,
-    save_MLE_guess,
+    load_mle_guesses,
+    save_mle_guess,
     save_number_of_close_values,
     stopwatch,
 )
 
 colorama.init()
 
-ln_neg_infty = -1000 * log(10)
 plot = False
-max_tries = 100
-SAME_MINIMA_STOP_CRITERION = (
-    4  # How many similar minima should be found for the procedure to stop
-)
-MINIMA_CLOSE_ATOL = 0.1
-CACHE_SIZE = 2000  # Useless if shorter than the trajectory length
-N12_TOL = 1e-5  # Value below which n12 is considered 0
 
 # Prior parameters
 # max_expected_n = 100
@@ -1553,6 +1553,7 @@ def get_MLE(
     sample_from_the_prior,
     hash_no_trial,
     link,
+    true_parameters,
     verbose=False,
     log_lklh=None,
     **kwargs,
@@ -1616,15 +1617,19 @@ def get_MLE(
     #     return
 
     mins = []
-    for i in range(max_tries):
-        print(f"\n{Fore.CYAN}MLE search. Try {i + 1}/{max_tries}...{Style.RESET_ALL}")
+    for i in range(MAX_MLE_SEARCH_TRIES):
+        print(
+            f"\n{Fore.CYAN}MLE search. Try {i + 1}/{MAX_MLE_SEARCH_TRIES}...{Style.RESET_ALL}"
+        )
 
         # On the first try, load the MLE guess from file. Else sample from the prior
-        if i == 0:
-            start_point, old_ln_value, success_load = load_MLE_guess(
-                hash_no_trial=hash_no_trial, link=link
-            )
-            if not success_load or np.any([not name in start_point for name in names]):
+        if not i:
+            # start_point, old_ln_value, success_load = load_MLE_guess(
+            #     hash_no_trial=hash_no_trial, link=link
+            # )
+            mle_guesses = load_mle_guesses(true_params=true_parameters)
+            best_guess = mle_guesses[0] if mle_guesses else []
+            if not best_guess or np.any([not name in best_guess[1] for name in names]):
                 start_point = sample_from_the_prior(names)
                 # start_point = {'D1': 0.003922065909638014, 'D2': 0.013698187786155717,
                 #              'n1': 0.7670151434765222,
@@ -1632,9 +1637,10 @@ def get_MLE(
                 # s
                 print(f"Sampling an origin point from the prior:", start_point)
             else:
+                start_point = best_guess[1]
                 print(
                     "Starting MLE guess loaded successfully:",
-                    (start_point, old_ln_value),
+                    best_guess,
                 )
 
         #
@@ -1720,55 +1726,7 @@ def get_MLE(
         else:
             print("The found minimum did not satisfy conditions. Skipping.")
 
-        # Plot to check the minimum
-        if plot:
-            print("Plotting...")
-
-            def plot_func(xs, dim):
-                out = []
-                for x in xs:
-                    args = _min_x.copy()
-                    args[dim] = x
-                    out.append(minimize_me(args))
-                return out
-
-            # step = 0.1
-            for dim in range(len(names)):
-                x_d = _min_x[dim]
-                if names[dim] is not "alpha":
-                    xs = np.linspace(
-                        np.min([x_d * 0.5, 0.1]),
-                        np.max([x_d * 2, 1]),
-                        num=100,
-                        endpoint=True,
-                    )
-                else:
-                    xs = np.linspace(-np.pi, np.pi, num=100, endpoint=True)
-                plt.figure(6 + int(link), clear=True)
-                plt.plot(
-                    xs, plot_func(xs, dim), label=names[dim]
-                )  # , color=color_sequence[dim])
-                plt.scatter(
-                    x_d, plot_func([x_d], dim)[0]
-                )  # , color=color_sequence[dim])
-
-                plt.legend()
-                plt.show(block=False)
-                # import time
-                # time.sleep(3)
-                # print('Plotting... done!')
-
-                # if link:
-                #     # print(M, link)
-                #     # if link and M == 100:
-                #     #     raise RuntimeError('stop')
-                #     raise RuntimeError('Stop after plot')
-                # plt.xlim([0, 40])
-                figname = f"minimum_{i}_{dim}.png"
-                plt.tight_layout()
-                plt.savefig(figname)
-        # else:
-        #     ln_model_evidence = ln_true_evidence
+        _plot_optimum(_min_x, i, link, names)
 
         # Estimate how many of the best values are close
         mins.sort(key=itemgetter(0))
@@ -1865,11 +1823,14 @@ def get_MLE(
         # except Exception:
         #     pass
         # Save the MLE guess for further use
-        save_MLE_guess(
-            hash_no_trial=hash_no_trial,
-            MLE_guess=MLE,
-            ln_posterior_value=-fun,
-            link=link,
+        save_mle_guess(
+            mle=MLE,
+            value=fun,
+            true_params=true_parameters,
+            # hash_no_trial=hash_no_trial,
+            # MLE_guess=MLE,
+            # ln_posterior_value=-fun,
+            # link=link,
         )
     else:
         print(
@@ -1883,6 +1844,56 @@ def get_MLE(
     # print('det_inv_hess: ', det_inv_hess)
 
     return MLE, ln_model_evidence, _min_x, success
+
+
+def _plot_optimum(_min_x, i, link, names):
+    # Plot to check the minimum
+    if plot:
+        print("Plotting...")
+
+        def plot_func(xs, dim):
+            out = []
+            for x in xs:
+                args = _min_x.copy()
+                args[dim] = x
+                out.append(minimize_me(args))
+            return out
+
+        # step = 0.1
+        for dim in range(len(names)):
+            x_d = _min_x[dim]
+            if names[dim] is not "alpha":
+                xs = np.linspace(
+                    np.min([x_d * 0.5, 0.1]),
+                    np.max([x_d * 2, 1]),
+                    num=100,
+                    endpoint=True,
+                )
+            else:
+                xs = np.linspace(-np.pi, np.pi, num=100, endpoint=True)
+            plt.figure(6 + int(link), clear=True)
+            plt.plot(
+                xs, plot_func(xs, dim), label=names[dim]
+            )  # , color=color_sequence[dim])
+            plt.scatter(x_d, plot_func([x_d], dim)[0])  # , color=color_sequence[dim])
+
+            plt.legend()
+            plt.show(block=False)
+            # import time
+            # time.sleep(3)
+            # print('Plotting... done!')
+
+            # if link:
+            #     # print(M, link)
+            #     # if link and M == 100:
+            #     #     raise RuntimeError('stop')
+            #     raise RuntimeError('Stop after plot')
+            # plt.xlim([0, 40])
+            figname = f"minimum_{i}_{dim}.png"
+            plt.tight_layout()
+            plt.savefig(figname)
+    # else:
+    #     ln_model_evidence = ln_true_evidence
 
 
 def get_MAP_and_hessian(minimize_me, x0, need_hessian=True, verbose=1, tol=1e-5):

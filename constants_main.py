@@ -2,6 +2,8 @@ import os
 import socket
 from pathlib import Path
 
+from numpy.core._multiarray_umath import log
+
 FLOAT_FORMAT = ".6g"
 
 scratch_folder = os.environ.get("MYSCRATCH", None)
@@ -39,3 +41,12 @@ color_sequence = [
     [0.4364, 0.2238, 0.5872],
     [0.5860, 0.4228, 0.2649],
 ]
+
+MAX_MLE_SEARCH_TRIES = 100
+ln_neg_infty = -1000 * log(10)
+SAME_MINIMA_STOP_CRITERION = (
+    4  # How many similar minima should be found for the procedure to stop
+)
+MINIMA_CLOSE_ATOL = 0.1
+CACHE_SIZE = 2000  # Useless if shorter than the trajectory length
+N12_TOL = 1e-5  # Value below which n12 is considered 0

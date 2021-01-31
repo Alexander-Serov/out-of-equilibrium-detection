@@ -1,6 +1,7 @@
 """
 Define 'trajectory' class that will manage simulation and fitting of the trajectories.
 """
+import copy
 import logging
 import time
 import warnings
@@ -43,7 +44,7 @@ class Trajectory:
         recalculate_BF=False,
         dry_run=False,
         plot=False,
-        model="localized_different_D",
+        model="localized_different_D_detect_angle_see_both",
         dim=2,
         verbose=True,
         collect_mle=False,
@@ -123,6 +124,18 @@ class Trajectory:
         ) = get_ln_prior_func(self.dt)
         self.parameters["prior_hash"] = self.prior_hash
         # print('Prior hash:', self.prior_hash)
+        self.true_params = dict(
+            D1=D1,
+            D2=D2,
+            n1=n1,
+            n2=n2,
+            n12=n12,
+            M=M,
+            dt=dt,
+            L0=L0,
+            angle=angle,
+            model=model,
+        )
 
         # Variables calculated later
         (
@@ -633,6 +646,8 @@ class Trajectory:
         else:
             log_lklh = self._ln_likelihood_no_link
         # print('A', log_lklh)
+        true_params = copy.copy(self.true_params)
+        true_params["link"] = link
 
         return get_MLE(
             ln_posterior=self.get_ln_posterior(link),
@@ -641,6 +656,7 @@ class Trajectory:
             hash_no_trial=self._hash_no_trial,
             link=link,
             log_lklh=log_lklh,
+            true_parameters=true_params,
         )
 
     def _calculate_bayes_factor(self):

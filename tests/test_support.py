@@ -8,7 +8,7 @@ from constants_main import (
     MLE_GUESSES_TO_KEEP,
     data_folder,
 )
-from support import get_mle_filename, load_mle_guesses, save_MLE_guess
+from support import get_mle_file, load_mle_guesses, save_mle_guess
 
 true_params = {
     "model": "test_model",
@@ -22,9 +22,10 @@ true_params = {
 ignore_keys = {"model", "link"}
 
 
-def test_get_mle_filename():
+def test_get_mle_file():
 
-    filename = get_mle_filename(true_params)
+    file = get_mle_file(true_params)
+    filename = file.name
 
     assert filename.endswith(".json")
 
@@ -42,7 +43,7 @@ def test_save_mle_guess():
     for key in ignore_keys:
         mle.pop(key)
 
-    filename = get_mle_filename(true_params)
+    filename = get_mle_file(true_params)
     filepath = data_folder / MLE_GUESSES_FOLDER / filename
 
     # -
@@ -54,7 +55,7 @@ def test_save_mle_guess():
 
     values_to_save = values[: MLE_GUESSES_TO_KEEP - 1]
     for value in values_to_save:
-        save_MLE_guess(true_params=true_params, mle=mle, value=value)
+        save_mle_guess(true_params=true_params, mle=mle, value=value)
 
     # Check correctly found
     loaded = load_mle_guesses(true_params=true_params)
@@ -64,7 +65,7 @@ def test_save_mle_guess():
     # -
     # Try appending to same file
     value = 100
-    save_MLE_guess(true_params=true_params, mle=mle, value=value)
+    save_mle_guess(true_params=true_params, mle=mle, value=value)
 
     # Check correctly found
     loaded = load_mle_guesses(true_params=true_params)
@@ -80,7 +81,7 @@ def test_save_mle_guess():
 
     values_to_save = values[: MLE_GUESSES_TO_KEEP + 1]
     for value in values_to_save:
-        save_MLE_guess(true_params=true_params, mle=mle, value=value)
+        save_mle_guess(true_params=true_params, mle=mle, value=value)
 
     # Check correctly found
     loaded = load_mle_guesses(true_params=true_params)

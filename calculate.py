@@ -14,7 +14,7 @@ from support import (
     hash_from_dictionary,
     load_data,
     save_data,
-    save_MLE_guess,
+    save_mle_guess,
     stopwatch,
 )
 from trajectory import Trajectory
@@ -152,6 +152,7 @@ def calculate_bayes_factor(
             link=False,
             verbose=verbose,
             rotation=False,
+            true_parameters=true_parameters,
         )
 
     if success_free:
@@ -174,6 +175,7 @@ def calculate_bayes_factor(
                 link=True,
                 verbose=verbose,
                 rotation=rotation,
+                true_parameters=true_parameters,
             )  # , start_point=true_parameters)
         if success_link:
             print("Done!", ln_evidence_with_link)
@@ -292,12 +294,12 @@ def simulate_and_calculate_Bayes_factor(
             (False, traj.MLE_no_link),
         ]:
             true_params["link"] = link
-            fun = -traj.get_ln_posterior(link)(**mle)
+            fun = traj.get_ln_posterior(link)(**mle)
 
-            save_MLE_guess(
+            save_mle_guess(
                 true_params=true_params,
                 mle=mle,
-                value=fun,
+                value=-fun,
             )
 
     return (

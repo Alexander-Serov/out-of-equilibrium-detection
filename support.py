@@ -9,6 +9,7 @@ import logging
 import os
 import pickle
 import time
+from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -340,7 +341,7 @@ def save_MLE_guess_old(
     # return success
 
 
-def get_mle_filename(true_params: dict) -> str:
+def get_mle_file(true_params: dict) -> Path:
     """Store the provided MLE guess.
 
     Parameters
@@ -350,8 +351,8 @@ def get_mle_filename(true_params: dict) -> str:
 
     Returns
     -------
-    str
-        Get the filename containing the MLE guesses for the given true parameters.
+    -
+        Path to the filename containing the MLE guesses for the given true parameters.
     """
     ignore_keys = ["model", "link"]
 
@@ -362,11 +363,13 @@ def get_mle_filename(true_params: dict) -> str:
     filename = f"mle_guess_model=({true_params['model']})_link={true_params['link']}"
     formatted = [f"_{key}=({true_params[key]:{FLOAT_FORMAT}})" for key in keys]
     filename = filename + "".join(formatted) + ".json"
+    filepath = data_folder / MLE_GUESSES_FOLDER / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    return filename
+    return filepath
 
 
-def save_MLE_guess(true_params: dict, mle: dict, value: float):
+def save_mle_guess(true_params: dict, mle: dict, value: float):
     """Store the provided MLE guess.
 
     Parameters
@@ -376,12 +379,10 @@ def save_MLE_guess(true_params: dict, mle: dict, value: float):
     mle
         Found MLE.
     value
-        Function value at the MLE.
+        (Negative) function value at the MLE.
 
     """
-    filename = get_mle_filename(true_params)
-    filepath = data_folder / MLE_GUESSES_FOLDER / filename
-    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath = get_mle_file(true_params)
 
     # Load, append and sort
     mle_guesses = load_mle_guesses(true_params)
@@ -406,8 +407,7 @@ def load_mle_guesses(true_params: dict) -> list:
     -   Previous best MLE guesses.
         If no guesses found, returns an empty list.
     """
-    filename = get_mle_filename(true_params)
-    filepath = data_folder / MLE_GUESSES_FOLDER / filename
+    filepath = get_mle_file(true_params)
     if not filepath.exists():
         return []
 
@@ -437,7 +437,7 @@ def load_all_MLE_guesses():
                 logging.warning("MLE guess file does not exist: ", e)
             except EOFError:
                 logging.warning(
-                    "Found a corrupt MLE guess file. The file will be rest."
+                    "Found a corrupt MLE guess file. The file will be overwritten."
                 )
                 os.unlink(filename)
             except Exception as e:

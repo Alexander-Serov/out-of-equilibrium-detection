@@ -1,4 +1,5 @@
 import copy
+import itertools
 import json
 import warnings
 from pathlib import Path
@@ -47,7 +48,7 @@ class EnergyTransferResults:
         resolution=3,
         statistic="mean",
         title="",
-        figname_base="figure",
+        figname_base=None,
         clip=10,
         verbose=False,
         recalculate_BF=False,
@@ -56,6 +57,7 @@ class EnergyTransferResults:
         yscale="log",
         default_values_dot: Tuple = None,
         plot_3_color_version: bool = True,
+        check_mle=False,
     ):
         """Store simulation parameters.
 
@@ -75,7 +77,6 @@ class EnergyTransferResults:
             If True, also plot a 3-color version, where only "link", "no link" and
             "inconclusive" are shown, i.e. "energy transfer" and "no energy transfer"
             are merged into "link".
-
         """
         self.trials = trials
         self.verbose = verbose
@@ -100,9 +101,13 @@ class EnergyTransferResults:
         self.statistic = statistic
         self.clip = clip
         self.plot_3_color_version = plot_3_color_version
-        self.cache_filename = (self.cache_folder / self.figname_base).with_suffix(
-            ".json"
-        )
+        self.check_mle = check_mle
+        if self.figname_base is not None:
+            self.cache_filename = (self.cache_folder / self.figname_base).with_suffix(
+                ".json"
+            )
+        else:
+            self.cache_filename = None
         self.vars_to_store = [
             "lg_BF_vals",
             "simulation_time",
@@ -133,6 +138,7 @@ class EnergyTransferResults:
             "recalculate_BF": self.recalculate_BF,
             "rotation": self.rotation,
             "cluster": self.cluster,
+            "check_mle": check_mle,
         }
 
         # Create a dictionary that will be used for expanding plot titles
@@ -224,92 +230,85 @@ class EnergyTransferResults:
         -------
 
         """
-
         args_dict = copy.deepcopy(self.default_args_dict)
 
         cluster_counter = 0
         loaded_new = False
         with open(arguments_file, "a") as file:
-
             for trial in trange(self.trials, desc="Loading/scheduling calculations"):
                 args_dict.update({"trial": trial})
+                for ind_M, ind_model, ind_y, ind_x in itertools.product(
+                    range(len(self.Ms)),
+                    range(len(self.models)),
+                    range(len(self.Ys)),
+                    range(len(self.Xs)),
+                ):
+                    M = self.Ms[ind_M]
+                    model = list(self.models.values())[ind_model]
+                    args_dict.update({"M": M, "model": model})
 
-                for ind_M, M in enumerate(self.Ms):
-                    args_dict.update({"M": M})
+                    y = self.Ys[ind_y]
+                    x = self.Xs[ind_x]
+                    self.update_y(args_dict, y)
+                    self.update_x(args_dict, x)
 
-                    for ind_model, model in enumerate(self.models.values()):
-                        args_dict.update({"model": model})
+                    # Only try to load from disk if has not been loaded
+                    # before (including results found in the cache)
+                    if (
+                        np.isnan(self.lg_BF_vals[ind_model, ind_M, ind_x, ind_y, trial])
+                        or self.check_mle
+                    ):
+                        (
+                            lg_bf,
+                            ln_evidence_with_link,
+                            ln_evidence_free,
+                            loaded,
+                            _hash,
+                            self.simulation_time[ind_model, ind_M, ind_x, ind_y, trial],
+                            traj,
+                        ) = simulate_and_calculate_Bayes_factor(**args_dict)
 
-                        for ind_y, y in enumerate(self.Ys):
-                            self.update_y(args_dict, y)
+                        loaded_new = True
 
-                            for ind_x, x in enumerate(self.Xs):
-                                self.update_x(args_dict, x)
+                        self.lg_BF_vals[ind_model, ind_M, ind_x, ind_y, trial] = lg_bf
 
-                                # Only try to load from disk if has not been loaded
-                                # before (including results found in the cache)
-                                if np.isnan(
-                                    self.lg_BF_vals[
-                                        ind_model, ind_M, ind_x, ind_y, trial
-                                    ]
-                                ):
-                                    (
-                                        lg_bf,
-                                        ln_evidence_with_link,
-                                        ln_evidence_free,
-                                        loaded,
-                                        _hash,
-                                        self.simulation_time[
-                                            ind_model, ind_M, ind_x, ind_y, trial
-                                        ],
-                                        traj,
-                                    ) = simulate_and_calculate_Bayes_factor(**args_dict)
+                        times = {
+                            "simulation_time": traj.simulation_time,
+                            "calculation_time_link": traj.calculation_time_link,
+                            "calculation_time_no_link": traj.calculation_time_no_link,
+                        }
+                        self.full_time[ind_model, ind_M, ind_x, ind_y, trial] = np.sum(
+                            list(times.values())
+                        )
 
-                                    loaded_new = True
+                        self.ln_evidence_with_links[
+                            ind_model, ind_M, ind_x, ind_y, trial
+                        ] = ln_evidence_with_link
+                        self.ln_evidence_frees[
+                            ind_model, ind_M, ind_x, ind_y, trial
+                        ] = ln_evidence_free
 
-                                    self.lg_BF_vals[
-                                        ind_model, ind_M, ind_x, ind_y, trial
-                                    ] = lg_bf
+                        # Get the MLE estimates
+                        if loaded:
+                            self.MLE_links[(ind_model, M, x, y, trial)] = traj.MLE_link
+                            self.MLE_no_links[
+                                (ind_model, M, x, y, trial)
+                            ] = traj.MLE_no_link
 
-                                    times = {
-                                        "simulation_time": traj.simulation_time,
-                                        "calculation_time_link": traj.calculation_time_link,
-                                        "calculation_time_no_link": traj.calculation_time_no_link,
-                                    }
-                                    self.full_time[
-                                        ind_model, ind_M, ind_x, ind_y, trial
-                                    ] = np.sum(list(times.values()))
+                        if self.cluster and not loaded:
+                            file.write(str(args_dict) + "\n")
+                            cluster_counter += 1
 
-                                    self.ln_evidence_with_links[
-                                        ind_model, ind_M, ind_x, ind_y, trial
-                                    ] = ln_evidence_with_link
-                                    self.ln_evidence_frees[
-                                        ind_model, ind_M, ind_x, ind_y, trial
-                                    ] = ln_evidence_free
+                    if self.print_MLE and trial == 0:
+                        print(
+                            "\nPrinting MLEs.\nArguments:\n",
+                            repr(args_dict),
+                        )
+                        print("MLE with link:\t", traj.MLE_link)
+                        print("MLE no link:\t", traj.MLE_link)
+                        print("lgB for link:\t", traj.lgB)
 
-                                    # Get the MLE estimates
-                                    if loaded:
-                                        self.MLE_links[
-                                            (ind_model, M, x, y, trial)
-                                        ] = traj.MLE_link
-                                        self.MLE_no_links[
-                                            (ind_model, M, x, y, trial)
-                                        ] = traj.MLE_no_link
-
-                                    if self.cluster and not loaded:
-                                        file.write(str(args_dict) + "\n")
-                                        cluster_counter += 1
-
-                                if self.print_MLE and trial == 0:
-                                    print(
-                                        "\nPrinting MLEs.\nArguments:\n",
-                                        repr(args_dict),
-                                    )
-                                    print("MLE with link:\t", traj.MLE_link)
-                                    print("MLE no link:\t", traj.MLE_link)
-                                    print("lgB for link:\t", traj.lgB)
-
-        if loaded_new and np.any(~np.isnan(self.lg_BF_vals)):
+        if loaded_new and np.any(~np.isnan(self.lg_BF_vals)) and not self.check_mle:
             # Save if something new was loaded and at least one value is not nan
             self.save_cache()
 
@@ -355,31 +354,49 @@ class EnergyTransferResults:
 
         cluster_counter = 0
         with open(arguments_file, "a") as file:
-
             for trial in trange(self.trials, desc="Loading/scheduling calculations"):
                 args_dict.update({"trial": trial})
+                for M, model, y, x in itertools.product(
+                    self.Ms, self.models.values(), self.Ys, self.Xs
+                ):
+                    args_dict.update({"M": M, "model": model})
+                    self.update_y(args_dict, y)
+                    self.update_x(args_dict, x)
+                    if self.cluster:  # Store arguments for cluster evaluation if loaded
+                        file.write(str(args_dict) + "\n")
 
-                for ind_M, M in enumerate(self.Ms):
-                    args_dict.update({"M": M})
+    def schedule_mle_check(self, **kwargs):
+        """Recalculate the existing results with the best available mle guess.
 
-                    for ind_model, model in enumerate(self.models.values()):
-                        args_dict.update({"model": model})
+        Returns
+        -------
 
-                        for ind_y, y in enumerate(self.Ys):
-                            self.update_y(args_dict, y)
+        """
+        if not self.cluster:
+            warnings.warn("MLE check should better be performed on the cluster.")
 
-                            for ind_x, x in enumerate(self.Xs):
-                                self.update_x(args_dict, x)
+        args_dict = copy.deepcopy(self.default_args_dict)
+        args_dict["check_mle"] = True
 
-                                # Store arguments for cluster evaluation if loaded
-                                if self.cluster:
-                                    file.write(str(args_dict) + "\n")
-                                    cluster_counter += 1
+        with open(arguments_file, "a") as file:
+            for trial in trange(self.trials, desc="Loading/scheduling calculations"):
+                args_dict.update({"trial": trial})
+                for M, model, y, x in itertools.product(
+                    self.Ms, self.models.values(), self.Ys, self.Xs
+                ):
+                    args_dict.update({"M": M, "model": model})
+                    self.update_y(args_dict, y)
+                    self.update_x(args_dict, x)
+                    if self.cluster:
+                        file.write(str(args_dict) + "\n")
 
     def save_cache(self):
         """Caches the results for the given figure.
         The cache file will be loaded before trying to load individual results.
         """
+        if self.cache_filename is None:
+            return
+
         results = {}
         for var_name in self.vars_to_store:
             var = getattr(self, var_name)
@@ -397,6 +414,8 @@ class EnergyTransferResults:
 
     def load_cache(self):
         """Load the cache file."""
+        if self.cache_filename is None:
+            return
         n_loaded = 0
         try:
             with open(self.cache_filename, "r") as f:
@@ -457,7 +476,7 @@ class EnergyTransferResults:
                 loaded = results[var_name]
             setattr(self, var_name, loaded)
 
-        print(f"Figure cache loaded successfully. ")
+        print(f"Figure cache loaded suc’cessfully (`{self.cache_filename}`).")
 
     def substitute_default_parameters(self, str_in: str) -> str:
         """Substitute default parameter values in the input string if found.

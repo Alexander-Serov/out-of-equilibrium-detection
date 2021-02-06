@@ -244,6 +244,7 @@ def simulate_and_calculate_Bayes_factor(
     cluster=False,
     rotation=True,
     collect_mle=False,
+    check_mle=False,
     **kwargs
 ):
     """
@@ -273,6 +274,7 @@ def simulate_and_calculate_Bayes_factor(
         dry_run=cluster,
         model=model,
         collect_mle=collect_mle,
+        check_mle=check_mle,
     )
     loaded = False if np.isnan(traj.lgB) else True
 

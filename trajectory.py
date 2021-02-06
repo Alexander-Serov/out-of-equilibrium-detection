@@ -5,6 +5,7 @@ import copy
 import logging
 import time
 import warnings
+from typing import Dict
 
 import numpy as np
 from scipy.fftpack import fft
@@ -25,6 +26,8 @@ from simulate import (
     simulate_a_free_hookean_dumbbell,
 )
 from support import hash_from_dictionary, load_data, save_data
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Trajectory:
@@ -48,6 +51,7 @@ class Trajectory:
         dim=2,
         verbose=True,
         collect_mle=False,
+        check_mle=False,
     ):
         """
 
@@ -73,6 +77,12 @@ class Trajectory:
         collect_mle
             If True, do not perform calculations, but just collect the MLE estimates for
             points, for which they are available.
+        check_mle
+            If True, loads the best MLE guess from file and checks whether calculating
+            MLE from it gives a better result than currently stored.
+            Does nothing if no stored mle guesses are available.
+            Does not update the save file if the recalculated results is worth than
+            previously found.
         """
 
         # Parameters for hash
@@ -89,6 +99,11 @@ class Trajectory:
         self.model = model
         self.dim = dim
         self.collect_mle = collect_mle
+        self.check_mle = check_mle
+        if collect_mle and check_mle:
+            raise ValueError(
+                "`collect_mle` and `check_mle` options are not compatible."
+            )
         self.parameters = {
             "D1": D1,
             "D2": D2,
@@ -265,6 +280,9 @@ class Trajectory:
             else:
                 raise NotImplementedError()
 
+        if check_mle and not self.dry_run:
+            self._check_mle()
+
     # Another constructor
     @classmethod
     def from_parameter_dictionary(cls, parameters):
@@ -343,31 +361,9 @@ class Trajectory:
             if self.dry_run or self.collect_mle:
                 self._ln_model_evidence_with_link = np.nan
             else:
-                # print(self.model)
-
-                # start = time.time()
-                # self._t, self._R, self._dR, _ = self.simulation_function(
-                #     parameters=self.parameters, plot=self.plot, show=False)
-                # self._simulation_time = time.time() - start
-                #
-                # # Save
-                # self._dict_data = {'t': self._t, 'R': self._R, 'dR': self._dR, '_simulation_time':
-                #     self._simulation_time, **self.parameters}
-
-                start = time.time()
-                (
-                    self._MLE_link,
-                    self._ln_model_evidence_with_link,
-                    min,
-                    success,
-                ) = self._calculate_MLE(link=True, names=self._names_with_link)
-                self._calculation_time_link = time.time() - start
-                model_results = {
-                    "_MLE_link": self._MLE_link,
-                    "_ln_model_evidence_with_link": self._ln_model_evidence_with_link,
-                    "_calculation_time_link": self._calculation_time_link,
-                }
-
+                model_results = self._calculate_ln_model_evidence_with_link()
+                for key in model_results.keys():
+                    self.__setattr__(key, model_results[key])
                 # Save
                 if np.isfinite(self._ln_model_evidence_with_link):
                     if self.model in self._dict_data:
@@ -376,6 +372,90 @@ class Trajectory:
                         self._dict_data[self.model] = model_results
                     self._save_data()
         return self._ln_model_evidence_with_link
+
+    def _calculate_ln_model_evidence_with_link(self) -> Dict:
+        """Calculate evidence with link.
+        Returns
+        -------
+        dict
+            With the MLE, logp at link and the calculation time.
+        """
+        start = time.time()
+        (_MLE_link, _ln_model_evidence_with_link, _, _) = self._calculate_MLE(
+            link=True, names=self._names_with_link
+        )
+        return {
+            "_MLE_link": _MLE_link,
+            "_ln_model_evidence_with_link": _ln_model_evidence_with_link,
+            "_calculation_time_link": (time.time() - start),
+        }
+
+    def _check_mle(self):
+        """Loads the best MLE guess from file and checks whether
+        calculating MLE from it gives a better result than currently stored.
+        Updates the evidence and the Bayes factor stored in file if successful.
+        Does nothing if no stored mle guesses are available.
+        Does not overwrite if the recalculated results is worth than previously
+        found.
+        """
+        msg_results_not_found = "MLE check aborted: earlier results not found."
+        msg_mle_check = (
+            "MLE check with link: the new likelihood ({new}) is {comp} than the"
+            " old value ({old})."
+        )
+        msg_update_lgB = (
+            " The stored value has been updated."
+            " Bayes factor updated: {lgB_old} -> {lgB}."
+        )
+
+        def clean_up_lgB():
+            self._lgB = np.nan
+            self._dict_data["_lgB"] = np.nan
+            self._dict_data[self.model]["_lgB"] = np.nan
+
+        # With link
+        for link, mle, ln_evidence_func, ln_likelihood_func in [
+            (
+                "link",
+                self.MLE_link,
+                self._calculate_ln_model_evidence_with_link,
+                self._ln_likelihood_with_link,
+            ),
+            (
+                "no_link",
+                self.MLE_no_link,
+                self._calculate_ln_model_evidence_no_link,
+                self._ln_likelihood_no_link,
+            ),
+        ]:
+            if mle is not None:
+                # Make sure a value has been loaded
+                model_results = ln_evidence_func()
+                new = ln_likelihood_func(**model_results[f"_MLE_{link}"])
+                old = ln_likelihood_func(**mle)
+                if new > old:
+                    lgB_old = copy.copy(self.lgB)
+                    clean_up_lgB()
+                    # todo should be fixed when storage uniformized
+                    if link == "link":
+                        self._dict_data[self.model].update(model_results)
+                    else:
+                        self._dict_data.update(model_results)
+                    self._save_data()
+                    self.lgB  # Recalculate the Bayes factor
+                    LOGGER.info(
+                        (msg_mle_check + msg_update_lgB).format(
+                            new=new,
+                            old=old,
+                            comp="higher",
+                            lgB_old=lgB_old,
+                            lgB=self.lgB,
+                        )
+                    )
+                else:
+                    LOGGER.info(msg_mle_check.format(new=new, old=old, comp="lower"))
+            else:
+                raise RuntimeError(msg_results_not_found)
 
     @property
     def MLE_link(self):
@@ -432,37 +512,26 @@ class Trajectory:
             if self.dry_run or self.collect_mle:
                 self._ln_model_evidence_no_link = np.nan
             else:
-                # start = time.time()
-                # self._t, self._R, self._dR, _ = self.simulation_function(
-                #     parameters=self.parameters, plot=self.plot, show=False)
-                # self._simulation_time = time.time() - start
-                #
-                # # Save
-                # self._dict_data = {'t': self._t, 'R': self._R, 'dR': self._dR, '_simulation_time':
-                #     self._simulation_time, **self.parameters}
-                start = time.time()
-                (
-                    self._MLE_no_link,
-                    self._ln_model_evidence_no_link,
-                    min,
-                    success,
-                ) = self._calculate_MLE(link=False, names=self._names_no_link)
-                self._calculation_time_no_link = time.time() - start
+                model_results = self._calculate_ln_model_evidence_no_link()
+                for key in model_results.keys():
+                    self.__setattr__(key, model_results[key])
 
                 # Save
                 if np.isfinite(self._ln_model_evidence_no_link):
-                    model_results = {
-                        label_MLE: self._MLE_no_link,
-                        label_evidence: self._ln_model_evidence_no_link,
-                        "_calculation_time_no_link": self._calculation_time_no_link,
-                    }
-                    # if self.model in self._dict_data:
                     self._dict_data.update(model_results)
-                    # else:
-                    #     self._dict_data[self.model] = model_results
-
                     self._save_data()
         return self._ln_model_evidence_no_link
+
+    def _calculate_ln_model_evidence_no_link(self):
+        start = time.time()
+        (_MLE_no_link, _ln_model_evidence_no_link, _, _) = self._calculate_MLE(
+            link=False, names=self._names_no_link
+        )
+        return {
+            "_MLE_no_link": _MLE_no_link,
+            "_ln_model_evidence_no_link": _ln_model_evidence_no_link,
+            "_calculation_time_no_link": (time.time() - start),
+        }
 
     @property
     def MLE_no_link(self):
@@ -495,7 +564,11 @@ class Trajectory:
                 self._lgB = self._dict_data[self.model]["_lgB"]
                 return self._lgB
 
-            elif "_lgB" in self._dict_data:
+            elif (
+                "_lgB" in self._dict_data
+                and self._lgB is not None
+                and np.isfinite(self._lgB)
+            ):
                 # todo This clause is kept for compatibility. Remove later
                 warnings.warn(
                     "Saving _lgB without a model name will be deprecated in the future",
@@ -657,6 +730,7 @@ class Trajectory:
             link=link,
             log_lklh=log_lklh,
             true_parameters=true_params,
+            check_mle=self.check_mle,
         )
 
     def _calculate_bayes_factor(self):

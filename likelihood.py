@@ -1556,6 +1556,7 @@ def get_MLE(
     true_parameters,
     verbose=False,
     log_lklh=None,
+    check_mle=False,
     **kwargs,
 ):
     """
@@ -1565,10 +1566,13 @@ def get_MLE(
 
     Make a guess of the starting point if none is supplied.
 
-    Input:
+    Parameters
+    ----------
         link, bool: whether a link between 2 particles should be considered in
         the likelihood method: {'BFGS', 'Nelder-Mead'}
         rotation: if True, also infer the orientation angle. Measured as counterclockwise rotation from x+ interaction direction
+    check_mle
+        See `Trajectory` class.
     """
 
     # number of random starting points for the MLE search before abandoning
@@ -1617,9 +1621,10 @@ def get_MLE(
     #     return
 
     mins = []
-    for i in range(MAX_MLE_SEARCH_TRIES):
+    search_tries = MAX_MLE_SEARCH_TRIES if not check_mle else 1
+    for i in range(search_tries):
         print(
-            f"\n{Fore.CYAN}MLE search. Try {i + 1}/{MAX_MLE_SEARCH_TRIES}...{Style.RESET_ALL}"
+            f"\n{Fore.CYAN}MLE search. Try {i + 1}/{search_tries}...{Style.RESET_ALL}"
         )
 
         # On the first try, load the MLE guess from file. Else sample from the prior
@@ -1823,15 +1828,16 @@ def get_MLE(
         # except Exception:
         #     pass
         # Save the MLE guess for further use
-        save_mle_guess(
-            mle=MLE,
-            value=fun,
-            true_params=true_parameters,
-            # hash_no_trial=hash_no_trial,
-            # MLE_guess=MLE,
-            # ln_posterior_value=-fun,
-            # link=link,
-        )
+        if not check_mle:
+            save_mle_guess(
+                mle=MLE,
+                value=fun,
+                true_params=true_parameters,
+                # hash_no_trial=hash_no_trial,
+                # MLE_guess=MLE,
+                # ln_posterior_value=-fun,
+                # link=link,
+            )
     else:
         print(
             f"MLE search procedure with link={link} failed to converge in {tries} tries."

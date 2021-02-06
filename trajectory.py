@@ -443,7 +443,8 @@ class Trajectory:
                         self._dict_data.update(model_results)
                     self._save_data()
                     self.lgB  # Recalculate the Bayes factor
-                    LOGGER.info(
+                    # LOGGER.info(
+                    print(
                         (msg_mle_check + msg_update_lgB).format(
                             new=new,
                             old=old,
@@ -453,7 +454,8 @@ class Trajectory:
                         )
                     )
                 else:
-                    LOGGER.info(msg_mle_check.format(new=new, old=old, comp="lower"))
+                    # LOGGER.info(
+                    print(msg_mle_check.format(new=new, old=old, comp="lower"))
             else:
                 raise RuntimeError(msg_results_not_found)
 
